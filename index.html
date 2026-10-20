@@ -7,6 +7,7 @@
 <title>SUIVI — dossiers</title>
 <script src="https://connexion-omega.vercel.app/bandeau.js" defer></script>
 <script src="/calendrier.js"></script>
+<script src="/types.js"></script>
 <script src="/lecture.js"></script>
 <style>
 /* ------------------------------------------------------------------
@@ -83,6 +84,11 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .titre-arc{font:600 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.2em}
 .eteint{opacity:.13}
 .vide-arc{font:12px "Segoe UI",sans-serif;fill:#5E7A8D}
+.borne{font:600 8.5px/1 ui-monospace,'Cascadia Mono',Menlo,monospace;letter-spacing:.08em;opacity:.8;pointer-events:none}
+.titre-mat{font:400 12px/1 Georgia,serif;letter-spacing:.3em}
+.titre-arc{font-size:9px}
+.rouge-fort{color:#FF8FAE;font-weight:600}
+.legende span{white-space:nowrap}
 @keyframes influx{from{stroke-dashoffset:var(--long,200)}to{stroke-dashoffset:0}}
 .influx{fill:none;stroke-width:2.5;stroke-linecap:round;stroke-dasharray:var(--eclat,18) var(--long,200);animation:influx var(--vitesse,6s) linear infinite;animation-delay:var(--decalage,0s)}
 @keyframes tourne{from{transform:rotate(0)}to{transform:rotate(360deg)}}
@@ -115,7 +121,7 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .panneau li:first-child{border-top:0}
 .panneau li b{display:block;color:#EDF6FA;font-weight:600;cursor:pointer}
 .panneau li span{color:#9FB8C8}
-.panneau .petits{display:flex;gap:6px;margin-top:5px}
+.panneau .petits{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
 .panneau .rapide{margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px}
 .panneau input[type=text]{width:100%;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:3px;outline:none}
 .panneau input[type=text]:focus{border-color:var(--jaune)}
@@ -165,6 +171,8 @@ textarea{min-height:60px;resize:vertical}
 .petits{display:flex;gap:6px}
 form.fiche label{display:block;margin-top:10px;font-size:13.5px;color:var(--gris)}
 form.fiche label input,form.fiche label select,form.fiche label textarea{margin-top:3px;display:block}
+.volet input[type=number]{width:100%;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:4px;outline:none;color:var(--texte)}
+.volet optgroup{background:#0C1F33;color:var(--gris)}
 form.fiche .deux{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 form.fiche .case{display:flex;gap:8px;align-items:center;color:var(--texte)}
 form.fiche .case input{width:16px;height:16px;accent-color:var(--jaune);margin:0}
@@ -245,15 +253,16 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
   </div>
 
   <div class="enveloppe ciel" id="ciel" style="flex:1">
-    <svg class="carte" id="carte" viewBox="0 0 1000 700" role="img" aria-label="Les dossiers, rangés par étape autour d’un anneau"></svg>
+    <svg class="carte" id="carte" viewBox="0 0 1000 700" role="img" aria-label="Les dossiers, rangés par type autour d’un anneau"></svg>
     <aside class="panneau" id="panneau" aria-live="polite"></aside>
   </div>
   <div class="enveloppe repli" id="repli"></div>
 
   <footer><div class="enveloppe">
     <div class="legende">
-      <span><i style="background:var(--orange)"></i>Rappel dû</span>
-      <span><i style="background:var(--rouge)"></i>Signature dépassée</span>
+      <span title="Chaque dossier s’éloigne du centre au fil du temps ; le bord de son secteur marque la durée moyenne de son type">Bord = délai moyen du type</span>
+      <span><i style="background:var(--orange)"></i>Délai proche ou dépassé</span>
+      <span><i style="background:var(--rouge)"></i>Signature ou échéance dépassée</span>
       <span id="compte-dossiers"></span>
     </div>
     <button class="lien" id="voir-classes">Signés et abandonnés (<span id="n-classes">0</span>)</button>
@@ -282,19 +291,12 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 
 <script>
 'use strict';
-var C = window.SuiviCalendrier;
+var C = window.SuiviCalendrier, T = window.SuiviTypes;
 var CLE = 'suivi.code';
-var etat = { aujourdhui: C.aujourdhui(), dossiers: [], rappels: [], motifs: [], ouvert: null, choisi: null, jour: null };
+var etat = { aujourdhui: C.aujourdhui(), dossiers: [], rappels: [], echeances: [], motifs: [], libellesEcheance: [], ouvert: null, choisi: null, jour: null };
 var LIBELLES = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné', formalites: 'Formalités' };
-/* les trois arcs de l'anneau, dans l'ordre des aiguilles d'une montre depuis le haut */
-var ARCS = [
-  { id: 'en_cours', nom: 'EN COURS', couleur: '#33838B' },
-  { id: 'avant_contrat', nom: 'AVANT-CONTRAT', couleur: '#6DD5DC' },
-  { id: 'signe', nom: 'SIGNÉ · FORMALITÉS', couleur: '#FFC900' }
-];
 var ORANGE = '#FF982D', ROUGE = '#E0456E';
 var COULEURS_LITURGIQUES = { blanc: '#E9D99A', rouge: '#E0456E', vert: '#46B98A', violet: '#B07CCB' };
-var MAX_MODULES = 28;          /* au-delà, chaque arc garde ses dossiers les plus urgents et regroupe le reste dans un module « + n » */
 
 function $(id) { return document.getElementById(id); }
 function el(tag, attrs, enfants) {
@@ -342,7 +344,7 @@ $('form-acces').addEventListener('submit', function (e) {
 $('verrouiller').addEventListener('click', verrouiller);
 function demarrer() {
   return api('GET', { action: 'etat' }).then(function (j) {
-    etat.aujourdhui = j.aujourdhui; etat.motifs = j.motifs_abandon; etat.jour = j;
+    etat.aujourdhui = j.aujourdhui; etat.motifs = j.motifs_abandon; etat.libellesEcheance = j.libelles_echeance || []; etat.jour = j;
     $('ecran-acces').classList.add('cache'); $('appli').classList.remove('cache');
     afficherJour(j);
     return charger();
@@ -367,14 +369,15 @@ function afficherJour(j) {
 /* ---------- Données ---------- */
 function charger() {
   return api('GET', { action: 'liste' }).then(function (j) {
-    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus;
+    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus; etat.echeances = j.echeances_proches || [];
     dessiner();
   });
 }
 function actif(d) { return !d.classe_le || d.classe_le > etat.aujourdhui; }
-function arcDe(d) { return d.etape === 'formalites' ? 'signe' : d.etape; }
 function signatureDepassee(d) { return d.signature_prevue && d.signature_prevue < etat.aujourdhui && !d.signature_le && d.etape !== 'abandonne'; }
-function niveau(d) { return signatureDepassee(d) ? 2 : d.rappels_echus ? 1 : 0; }
+function echeanceDepassee(d) { return d.prochaine_echeance && d.prochaine_echeance < etat.aujourdhui && !d.signature_le && d.etape !== 'abandonne'; }
+/* 2 = rouge (signature ou échéance de l'acte dépassée) ; le rappel dû se marque par la cloche */
+function niveau(d) { return signatureDepassee(d) || echeanceDepassee(d) ? 2 : 0; }
 function nomCourt(d) {
   var p1 = (d.partie1 || '').toUpperCase(), p2 = (d.partie2 || '').toUpperCase();
   var n = p2 ? p1 + ' / ' + p2 : p1;
@@ -383,6 +386,7 @@ function nomCourt(d) {
 function aTraiter() {
   var l = [];
   etat.rappels.forEach(function (r) { l.push({ type: 'rappel', r: r }); });
+  etat.echeances.forEach(function (x) { l.push({ type: 'echeance', x: x, n: ecart(etat.aujourdhui, x.echeance) }); });
   etat.dossiers.filter(actif).forEach(function (d) {
     if (d.signature_le || d.etape === 'abandonne' || !d.signature_prevue) return;
     var n = ecart(etat.aujourdhui, d.signature_prevue);
@@ -393,7 +397,7 @@ function aTraiter() {
 }
 
 /* ---------- L'anneau ---------- */
-var CX = 500, CY = 350, RAYON = 205, R_COEUR = 138;
+var CX = 500, CY = 350, R_COEUR = 124;
 var rad = function (a) { return a * Math.PI / 180; };
 var surCercle = function (a, r) { return [CX + Math.cos(rad(a)) * r, CY + Math.sin(rad(a)) * r]; };
 function arcD(r, a1, a2) {
@@ -406,28 +410,36 @@ function hexa(cx, cy, r) {
   return p.join(' ');
 }
 
-/* Quels dossiers montrer sur chaque arc : tous, ou les plus urgents et un module « + n » */
-function repartir(dossiers) {
-  var parArc = {}; ARCS.forEach(function (a) { parArc[a.id] = []; });
-  dossiers.forEach(function (d) { if (parArc[arcDe(d)]) parArc[arcDe(d)].push(d); });
-  // ordre sur l'arc : sans date de signature d'abord, puis par date prévue
-  function ordre(a, b) {
-    var x = a.signature_le || a.signature_prevue || '', y = b.signature_le || b.signature_prevue || '';
-    if (!x !== !y) return x ? 1 : -1;
-    return x < y ? -1 : x > y ? 1 : a.id - b.id;
-  }
-  var total = dossiers.length, res = [];
-  ARCS.forEach(function (a) {
-    var l = parArc[a.id].slice().sort(ordre), montres = l, surplus = [];
-    if (total > MAX_MODULES) {
-      var place = Math.max(1, Math.floor(MAX_MODULES * l.length / total));
-      if (l.length > place) {
-        var prio = l.slice().sort(function (x, y) { return niveau(y) - niveau(x) || ordre(x, y); }).slice(0, place - 1);
-        montres = l.filter(function (d) { return prio.indexOf(d) >= 0; });
-        surplus = l.filter(function (d) { return prio.indexOf(d) < 0; });
-      }
-    }
-    res.push({ arc: a, montres: montres, surplus: surplus, tous: l });
+/* ---------- L'anneau par type de dossier ----------
+   Un secteur par type ouvert (largeur selon le nombre de dossiers, secteurs vides masqués),
+   rangés par matière. Chaque dossier a son rayon : il part du centre à l'ouverture et
+   s'éloigne jusqu'au bord, qui marque la durée moyenne du type ; sa teinte vire à
+   l'orange à l'approche de ce délai. Les signés (formalités) sont au-delà du bord, avec la plume. */
+var R_ANNEAU = 151, R0 = 180, R1 = 302, R_SIGNES = 338, R_MAT = 366;
+var GRADUATIONS = [0.25, 0.5, 0.75];
+function rayonDe(part) { return R0 + (R1 - R0) * Math.min(part, 1.04); }
+function melange(c1, c2, k) {
+  var a = parseInt(c1.slice(1), 16), b = parseInt(c2.slice(1), 16);
+  var r = Math.round((a >> 16) + ((b >> 16) - (a >> 16)) * k), g = Math.round(((a >> 8) & 255) + (((b >> 8) & 255) - ((a >> 8) & 255)) * k), bl = Math.round((a & 255) + ((b & 255) - (a & 255)) * k);
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | bl).toString(16).slice(1);
+}
+function teinteDe(d, x) {
+  if (niveau(d) === 2) return ROUGE;
+  if (d.signature_le) return x.type.couleur;
+  var k = Math.max(0, Math.min(1, (x.part - 0.5) / 0.5));     /* l'orange monte à partir de la moitié du délai */
+  return melange(x.type.couleur, ORANGE, k);
+}
+
+function secteurs(dossiers) {
+  var par = {};
+  dossiers.forEach(function (d) { var t = T.type(d.type_dossier).id; (par[t] = par[t] || []).push(d); });
+  var res = [];
+  T.MATIERES.forEach(function (m) {
+    T.TYPES.forEach(function (t) {
+      if (t.matiere !== m.id || !par[t.id]) return;
+      var l = par[t.id].slice().sort(function (a, b) { return (a.date_ouverture || '').localeCompare(b.date_ouverture || '') || a.id - b.id; });
+      res.push({ type: t, matiere: m, tous: l });
+    });
   });
   return res;
 }
@@ -445,151 +457,165 @@ function dessiner() {
     '<radialGradient id="ecran-hud" cx="50%" cy="42%" r="72%"><stop offset="0%" stop-color="#17384F"/><stop offset="62%" stop-color="#102A40"/><stop offset="100%" stop-color="#0A1C2C"/></radialGradient>';
 
   coeur(carte);
+  var lots = secteurs(actifs);
+  dessinerRepli(lots);
+  if (!lots.length) {
+    carte.appendChild(sv('circle', { cx: CX, cy: CY, r: R1, fill: 'none', stroke: '#27425B', 'stroke-dasharray': '2 7' }));
+    var v = sv('text', { 'class': 'vide-arc', x: CX, y: CY + R1 + 26, 'text-anchor': 'middle' });
+    v.textContent = 'Aucun dossier ouvert — « Nouveau dossier » pour commencer'; carte.appendChild(v);
+    $('carte').setAttribute('viewBox', (CX - R_MAT - 30) + ' ' + (CY - R_MAT - 30) + ' ' + (2 * R_MAT + 60) + ' ' + (2 * R_MAT + 80));
+    if (etat.choisi == null) panneauATraiter();
+    return;
+  }
 
-  var lots = repartir(actifs);
-  /* longueur de chaque arc : proportionnelle à ses dossiers, mais jamais
-     moins de 64 degrés, pour que son titre tienne et que l'œil le trouve */
-  var nbs = lots.map(function (l) { return Math.max(1, l.montres.length + (l.surplus.length ? 1 : 0)); });
-  var cases = nbs.reduce(function (a, b) { return a + b; }, 0);
-  var spans = nbs.map(function (n) { return n * 360 / cases; });
-  for (var tour = 0; tour < 4; tour++) {
-    spans = spans.map(function (x) { return Math.max(x, 64); });
+  /* largeur de chaque secteur : proportionnelle à ses dossiers, avec un minimum pour que son titre tienne */
+  var rT = R_COEUR + 12;
+  var besoins = lots.map(function (l) { return Math.min(70, ((l.type.court.length + 3) * 6.6 / rT) * 180 / Math.PI + 6); });
+  var total = actifs.length;
+  var spans = lots.map(function (l) { return l.tous.length * 360 / total; });
+  if (lots.length === 1) spans = [360];
+  else for (var tour = 0; tour < 6; tour++) {
+    spans = spans.map(function (x, i) { return Math.max(x, besoins[i]); });
     var somme = spans.reduce(function (a, b) { return a + b; }, 0);
     spans = spans.map(function (x) { return x * 360 / somme; });
   }
-  var debut = -90 - spans[0] / nbs[0] / 2, aPlacer = [], ecussons = [], recherche = sansAccent($('recherche').value.trim());
-  var allumage = 0, rang = 0;
-  /* taille des écussons : elle suit la place la plus étroite de l'anneau */
-  var pasMin = Math.min.apply(null, spans.map(function (x, i) { return x / nbs[i]; }));
-  var RH = Math.max(13, Math.min(20, (RAYON + 34) * rad(pasMin) * 0.42));
+  /* taille des écussons : elle suit l'écart le plus serré au départ des rayons */
+  var pasMin = Math.min.apply(null, spans.map(function (s, i) { return s / lots[i].tous.length; }));
+  var RH = Math.max(8, Math.min(15, R0 * rad(pasMin) * 0.4));
+  var debut = -90 - spans[0] / 2, recherche = sansAccent($('recherche').value.trim());
+  var aPlacer = [], ecussons = [], allumage = 0, matPrec = null, matDebut = 0;
+  var traitsMat = [];
 
   lots.forEach(function (lot, n) {
-    var a = lot.arc;
-    var nb = nbs[n], span = spans[n], pas = span / nb;
-    var a1 = debut + 1.2, a2 = debut + span - 1.2;
-    var d = arcD(RAYON, a1, a2);
-    carte.appendChild(sv('path', { 'class': 'arc', d: d, fill: 'none', stroke: a.couleur, 'stroke-opacity': '.8', 'stroke-width': '13' }));
-    var flux = sv('path', { 'class': 'influx', d: d, stroke: '#EAFEFF', 'stroke-opacity': '.55' });
+    var t = lot.type, span = spans[n], a1 = debut + (lots.length > 1 ? 0.8 : 0), a2 = debut + span - (lots.length > 1 ? 0.8 : 0);
+    var plein = lots.length === 1;
+    /* bande du secteur sur l'anneau */
+    var dBande = plein ? 'M' + (CX + R_ANNEAU) + ',' + CY + ' a' + R_ANNEAU + ',' + R_ANNEAU + ' 0 1 1 -' + (2 * R_ANNEAU) + ',0 a' + R_ANNEAU + ',' + R_ANNEAU + ' 0 1 1 ' + (2 * R_ANNEAU) + ',0' : arcD(R_ANNEAU, a1, a2);
+    carte.appendChild(sv('path', { d: dBande, fill: 'none', stroke: t.couleur, 'stroke-opacity': '.85', 'stroke-width': '9' }));
+    var flux = sv('path', { 'class': 'influx', d: dBande, stroke: '#EAFEFF', 'stroke-opacity': '.45' });
+    flux.style.setProperty('--long', Math.round(R_ANNEAU * rad(a2 - a1))); flux.style.setProperty('--vitesse', (4 + lot.tous.length * 0.6).toFixed(1) + 's');
     carte.appendChild(flux);
-    var L = Math.round(RAYON * rad(a2 - a1));
-    flux.style.setProperty('--long', L); flux.style.setProperty('--vitesse', (3.4 + nb * 0.7).toFixed(1) + 's');
-    flux.style.setProperty('--decalage', (-rang * 0.9).toFixed(1) + 's');
-
-    /* titre de l'arc : il court le long de l'anneau, entre le cadran et les
-       barres ; en bas de l'anneau on le trace à rebours pour qu'il se lise
-       de gauche à droite */
-    var milieu = (a1 + a2) / 2, rT = R_COEUR + 17, bas = Math.sin(rad(milieu)) > 0.2;
-    var pa = surCercle(bas ? a2 : a1, rT), pb = surCercle(bas ? a1 : a2, rT);
-    var chemin = sv('path', { id: 'titre-' + a.id, fill: 'none', d: 'M' + pa[0].toFixed(1) + ',' + pa[1].toFixed(1) + ' A' + rT + ',' + rT + ' 0 ' + ((a2 - a1) > 180 ? 1 : 0) + ' ' + (bas ? 0 : 1) + ' ' + pb[0].toFixed(1) + ',' + pb[1].toFixed(1) });
-    defs.appendChild(chemin);
-    var t = sv('text', { 'class': 'titre-arc', fill: a.couleur, dy: bas ? '7' : '0' });
-    var tp = sv('textPath', { href: '#titre-' + a.id, startOffset: '50%', 'text-anchor': 'middle' });
-    tp.textContent = a.nom + '  ' + lot.tous.length;
-    t.appendChild(tp); carte.appendChild(t);
-
-    if (!lot.montres.length) {
-      var pv = surCercle(debut + span / 2, RAYON + 30); pv[1] += 4;
-      ecussons.push({ x: pv[0], y: pv[1] });
-      var v = sv('text', { 'class': 'vide-arc', x: pv[0].toFixed(1), y: pv[1].toFixed(1), 'text-anchor': 'middle' });
-      v.textContent = 'aucun dossier'; carte.appendChild(v);
+    /* graduations (quarts du délai moyen) et bord = délai moyen */
+    GRADUATIONS.forEach(function (g) {
+      var r = rayonDe(g);
+      carte.appendChild(sv('path', { d: plein ? cercleD(r) : arcD(r, a1, a2), fill: 'none', stroke: t.couleur, 'stroke-opacity': '.16', 'stroke-width': '1', 'stroke-dasharray': '2 5' }));
+    });
+    carte.appendChild(sv('path', { d: plein ? cercleD(R1) : arcD(R1, a1, a2), fill: 'none', stroke: t.couleur, 'stroke-opacity': '.55', 'stroke-width': '1.6' }));
+    /* séparation entre secteurs */
+    if (!plein) {
+      var s1 = surCercle(debut, R_ANNEAU - 6), s2 = surCercle(debut, R_SIGNES + 14);
+      carte.appendChild(sv('line', { x1: s1[0].toFixed(1), y1: s1[1].toFixed(1), x2: s2[0].toFixed(1), y2: s2[1].toFixed(1), stroke: '#1E3A54', 'stroke-width': '1' }));
     }
+    /* durée moyenne inscrite au bord */
+    var duree = lot.tous.length === 1 ? T.delais(lot.tous[0], etat.aujourdhui).duree : null;
+    var libBord = t.mois ? t.mois + ' MOIS' : (t.ajustable && duree && duree !== t.delai ? duree : t.delai) + ' J';
+    var pb = surCercle((a1 + a2) / 2, R1 + 11);
+    var tb = sv('text', { 'class': 'borne', x: pb[0].toFixed(1), y: (pb[1] + 3).toFixed(1), 'text-anchor': 'middle', fill: t.couleur });
+    tb.textContent = libBord; carte.appendChild(tb);
+    ecussons.push({ x: pb[0], y: pb[1], m: 18 });
 
-    var items = lot.montres.map(function (dd) { return { d: dd }; });
-    if (lot.surplus.length) items.push({ surplus: lot.surplus, arc: a });
-    items.forEach(function (it, i) {
-      var ang = debut + pas * (i + 0.5);
-      var m = surCercle(ang, RAYON + 34), xm = m[0], ym = m[1];
-      ecussons.push({ x: xm, y: ym });
-      var niv = it.d ? niveau(it.d) : 0;
-      var teinte = niv === 2 ? ROUGE : niv === 1 ? ORANGE : a.couleur;
+    /* titre du secteur, le long de l'anneau, à rebours en bas pour se lire de gauche à droite */
+    var milieu = (a1 + a2) / 2, bas = Math.sin(rad(milieu)) > 0.2;
+    var b1 = plein ? -150 : a1, b2 = plein ? -30 : a2;
+    var pa = surCercle(bas ? b2 : b1, rT), pz = surCercle(bas ? b1 : b2, rT);
+    var chemin = sv('path', { id: 'titre-' + t.id, fill: 'none', d: 'M' + pa[0].toFixed(1) + ',' + pa[1].toFixed(1) + ' A' + rT + ',' + rT + ' 0 ' + ((b2 - b1) > 180 ? 1 : 0) + ' ' + (bas ? 0 : 1) + ' ' + pz[0].toFixed(1) + ',' + pz[1].toFixed(1) });
+    defs.appendChild(chemin);
+    var tt = sv('text', { 'class': 'titre-arc', fill: t.couleur, dy: bas ? '7' : '0' });
+    var tp = sv('textPath', { href: '#titre-' + t.id, startOffset: '50%', 'text-anchor': 'middle' });
+    tp.textContent = (span < besoins[n] - 2 ? t.court.split(' ')[0] : t.court) + '  ' + lot.tous.length;
+    tt.appendChild(tp); carte.appendChild(tt);
+
+    /* arc de matière, tout à l'extérieur */
+    if (lot.matiere.id !== matPrec) { if (matPrec) traitsMat.push({ m: traitsMat.m, a1: matDebut, a2: debut }); matPrec = lot.matiere.id; matDebut = debut; traitsMat.m = lot.matiere; }
+
+    /* les dossiers, chacun sur son rayon */
+    var pas = (a2 - a1) / lot.tous.length;
+    lot.tous.forEach(function (d, i) {
+      var x = T.delais(d, etat.aujourdhui);
+      var ang = a1 + pas * (i + 0.5);
+      var r = d.signature_le ? R_SIGNES : rayonDe(x.part);
+      var m = surCercle(ang, r), xm = m[0], ym = m[1];
+      var niv = niveau(d), teinte = teinteDe(d, x), rappelDu = d.rappels_echus > 0;
+      ecussons.push({ x: xm, y: ym, m: RH + 5 });
       var g = sv('g', { 'class': 'module', tabindex: '0', role: 'button' });
-      g.setAttribute('aria-label', it.d ? it.d.intitule + ', ' + LIBELLES[it.d.etape] : it.surplus.length + ' autres dossiers ' + a.nom);
-      if (it.d) {
-        g.dataset.id = it.d.id;
-        var cherche = sansAccent([it.d.intitule, it.d.partie1, it.d.partie2, it.d.numero, it.d.nom_outlook].join(' '));
-        if (recherche && cherche.indexOf(recherche) < 0) g.classList.add('eteint');
-        if (etat.choisi === it.d.id) g.classList.add('choisi');
-      }
-      // la barre : trois segments, de l'anneau vers l'intérieur
-      var larg = Math.min(19, Math.max(9, pas * RAYON * Math.PI / 180 * 0.5)), seg = 8, inter = 2.6;
-      for (var k = 0; k < 3; k++) {
-        var haut = RAYON - 7 - k * (seg + inter), op = (0.92 - k * 0.17).toFixed(2);
-        var r = sv('rect', { 'class': 'segment allumage', x: (CX - larg / 2).toFixed(1), y: (CY - haut).toFixed(1), width: larg.toFixed(1), height: seg, rx: '1', fill: teinte, opacity: op, transform: 'rotate(' + (ang + 90) + ' ' + CX + ' ' + CY + ')' });
-        r.style.setProperty('--opf', op); r.style.animationDelay = (90 + allumage * 30 + k * 55) + 'ms';
-        g.appendChild(r);
-      }
+      g.setAttribute('aria-label', d.intitule + ', ' + t.nom);
+      g.dataset.id = d.id;
+      var cherche = sansAccent([d.intitule, d.partie1, d.partie2, d.numero, d.nom_outlook, t.nom].join(' '));
+      if (recherche && cherche.indexOf(recherche) < 0) g.classList.add('eteint');
+      if (etat.choisi === d.id) g.classList.add('choisi');
+      /* le rayon : une barre à segments depuis l'anneau jusqu'au dossier */
+      var p0 = surCercle(ang, R_ANNEAU + 7), p1 = surCercle(ang, r - RH - 2);
+      var rayon = sv('line', { 'class': 'segment allumage rayon', x1: p0[0].toFixed(1), y1: p0[1].toFixed(1), x2: p1[0].toFixed(1), y2: p1[1].toFixed(1), stroke: teinte, 'stroke-width': '3', 'stroke-dasharray': '7 3', opacity: '.75' });
+      rayon.style.setProperty('--opf', '.75'); rayon.style.animationDelay = (80 + allumage * 35) + 'ms';
+      g.appendChild(rayon);
       allumage++;
-      var c1 = surCercle(ang + pas / 2, RAYON - 9), c2 = surCercle(ang + pas / 2, RAYON + 9);
-      if (i < items.length - 1) carte.appendChild(sv('line', { 'class': 'cran', x1: c1[0].toFixed(1), y1: c1[1].toFixed(1), x2: c2[0].toFixed(1), y2: c2[1].toFixed(1) }));
-      g.appendChild(sv('polygon', { 'class': 'cadre-survol', points: hexa(xm, ym, RH + 7), fill: 'none', stroke: teinte, 'stroke-width': '1.2' }));
+      g.appendChild(sv('polygon', { 'class': 'cadre-survol', points: hexa(xm, ym, RH + 6), fill: 'none', stroke: teinte, 'stroke-width': '1.2' }));
       g.appendChild(sv('polygon', { 'class': 'ecusson', points: hexa(xm, ym, RH), fill: '#0C2134', stroke: teinte, 'stroke-width': '1.6' }));
-      if (it.d) {
-        var ti = Math.round(RH * 1.05);
-        var u = sv('use', { href: '#' + (niv === 1 ? 'i-cloche' : it.d.signature_le ? 'i-plume' : 'i-dossier'), x: (xm - ti / 2).toFixed(1), y: (ym - ti / 2).toFixed(1), width: ti, height: ti, color: teinte, 'pointer-events': 'none' });
-        g.appendChild(u);
-        if (niv) g.appendChild(sv('circle', { 'class': 'pulse', cx: (xm + RH * 0.75).toFixed(1), cy: (ym - RH * 0.65).toFixed(1), r: '3.6', fill: teinte, stroke: '#0A1C2C', 'stroke-width': '1.2' }));
-      } else {
-        var p = sv('text', { x: xm.toFixed(1), y: (ym + 4).toFixed(1), 'text-anchor': 'middle', 'class': 'etiquette', fill: a.couleur });
-        p.textContent = '+' + it.surplus.length; g.appendChild(p);
-      }
-      // étiquette
-      if (it.d) {
-        var cos = Math.cos(rad(ang)), sin = Math.sin(rad(ang)), ancre = 'middle', dy = 4;
-        if (Math.abs(cos) < 0.3) dy = sin < 0 ? -8 : 16; else ancre = cos > 0 ? 'start' : 'end';
-        var trait = sv('polyline', { fill: 'none', stroke: teinte, 'stroke-opacity': '.5', 'stroke-width': '1.1', 'pointer-events': 'none' });
-        var tx = sv('text', { 'class': 'etiquette', 'text-anchor': ancre, fill: niv ? teinte : '#BFD3DF' });
-        tx.textContent = nomCourt(it.d);
-        g.appendChild(trait); g.appendChild(tx);
-        aPlacer.push({ tx: tx, trait: trait, a: ang, ancre: ancre, dy: dy });
-      }
-      g.addEventListener('mouseenter', function () { montrer(it, g); });
-      g.addEventListener('focus', function () { montrer(it, g); });
-      g.addEventListener('click', function () { if (it.d) ouvrir(it.d.id); else listeArc(it.arc, it.surplus); });
-      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); g.dispatchEvent(new Event('click')); } });
+      var ti = Math.round(RH * 1.05);
+      g.appendChild(sv('use', { href: '#' + (rappelDu ? 'i-cloche' : d.signature_le ? 'i-plume' : 'i-dossier'), x: (xm - ti / 2).toFixed(1), y: (ym - ti / 2).toFixed(1), width: ti, height: ti, color: teinte, 'pointer-events': 'none' }));
+      if (rappelDu || niv) g.appendChild(sv('circle', { 'class': 'pulse', cx: (xm + RH * 0.75).toFixed(1), cy: (ym - RH * 0.65).toFixed(1), r: '3.4', fill: niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' }));
+      var tx = sv('text', { 'class': 'etiquette', fill: niv ? ROUGE : '#BFD3DF' });
+      tx.textContent = nomCourt(d); g.appendChild(tx);
+      aPlacer.push({ tx: tx, x: xm, y: ym, a: ang, rh: RH });
+      g.addEventListener('mouseenter', function () { montrer(d); });
+      g.addEventListener('focus', function () { montrer(d); });
+      g.addEventListener('click', function () { ouvrir(d.id); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(d.id); } });
       carte.appendChild(g);
     });
-    rang += nb; debut += span;
+    debut += span;
   });
-  placerEtiquettes(aPlacer, ecussons, RH);
-  cadrer(aPlacer, ecussons);
+  traitsMat.push({ m: traitsMat.m, a1: matDebut, a2: debut });
+  traitsMat.forEach(function (tm, i) {
+    var plein = traitsMat.length === 1 && lots.length > 0 && Math.abs(tm.a2 - tm.a1 - 360) < 0.5;
+    var a1 = tm.a1 + 1.5, a2 = tm.a2 - 1.5;
+    carte.appendChild(sv('path', { d: plein ? cercleD(R_MAT) : arcD(R_MAT, a1, a2), fill: 'none', stroke: tm.m.couleur, 'stroke-opacity': '.5', 'stroke-width': '2', 'stroke-linecap': 'round' }));
+    var mil = plein ? -90 : (a1 + a2) / 2, bas = Math.sin(rad(mil)) > 0.2, rr = R_MAT + (bas ? 15 : 8);
+    var c1 = plein ? -130 : a1, c2 = plein ? -50 : a2;
+    var pa = surCercle(bas ? c2 : c1, rr), pz = surCercle(bas ? c1 : c2, rr);
+    defs.appendChild(sv('path', { id: 'mat-' + i, fill: 'none', d: 'M' + pa[0].toFixed(1) + ',' + pa[1].toFixed(1) + ' A' + rr + ',' + rr + ' 0 ' + ((c2 - c1) > 180 ? 1 : 0) + ' ' + (bas ? 0 : 1) + ' ' + pz[0].toFixed(1) + ',' + pz[1].toFixed(1) }));
+    var t = sv('text', { 'class': 'titre-mat', fill: tm.m.couleur });
+    var tp = sv('textPath', { href: '#mat-' + i, startOffset: '50%', 'text-anchor': 'middle' });
+    tp.textContent = tm.m.nom.toUpperCase(); t.appendChild(tp); carte.appendChild(t);
+  });
+  placerEtiquettes(aPlacer, ecussons);
+  cadrer(aPlacer);
   setTimeout(function () { carte.querySelectorAll('.segment.allumage').forEach(function (n) { n.classList.remove('allumage'); }); }, 1600);
   if (etat.choisi == null) panneauATraiter();
-  dessinerRepli(lots);
 }
+function cercleD(r) { return 'M' + (CX + r) + ',' + CY + ' a' + r + ',' + r + ' 0 1 1 -' + (2 * r) + ',0 a' + r + ',' + r + ' 0 1 1 ' + (2 * r) + ',0'; }
 
-/* Placement des étiquettes sans chevauchement : on éloigne de couronne en couronne */
-var LARG_SIGNE = 8.4, HAUT_SIGNE = 11, COURONNES = [RAYON + 80, RAYON + 104, RAYON + 128, RAYON + 152];
-function boite(e, r) {
-  var p = surCercle(e.a, r), l = e.tx.textContent.length * LARG_SIGNE;
-  var x0 = e.ancre === 'start' ? p[0] : e.ancre === 'end' ? p[0] - l : p[0] - l / 2, yb = p[1] + e.dy;
-  return { x0: x0, x1: x0 + l, y0: yb - HAUT_SIGNE, y1: yb + 3, x: p[0], y: yb };
-}
-function seTouchent(A, B, m) { m = m || 4; return A.x0 < B.x1 + m && B.x0 < A.x1 + m && A.y0 < B.y1 + m && B.y0 < A.y1 + m; }
-function placerEtiquettes(liste, ecussons, RH) {
-  var m = (RH || 20) + 5;
-  var obstacles = ecussons.map(function (e) { return { x0: e.x - m, x1: e.x + m, y0: e.y - m, y1: e.y + m }; });
+/* Étiquettes : à côté de l'écusson, côté extérieur ; sinon dessous ou dessus ; sinon on la tait (le panneau la donne au survol) */
+var LARG_SIGNE = 7.6, HAUT_SIGNE = 10;
+function seTouchent(A, B, m) { m = m || 3; return A.x0 < B.x1 + m && B.x0 < A.x1 + m && A.y0 < B.y1 + m && B.y0 < A.y1 + m; }
+function placerEtiquettes(liste, ecussons) {
+  var obstacles = ecussons.map(function (e) { return { x0: e.x - e.m, x1: e.x + e.m, y0: e.y - e.m, y1: e.y + e.m }; });
+  obstacles.push({ x0: CX - R_ANNEAU - 8, x1: CX + R_ANNEAU + 8, y0: CY - R_ANNEAU - 8, y1: CY + R_ANNEAU + 8 });
   var posees = [];
   liste.forEach(function (e) {
-    var b;
-    for (var i = 0; i < COURONNES.length; i++) {
-      b = boite(e, COURONNES[i]);
-      if (!obstacles.some(function (o) { return seTouchent(b, o, 2); }) && !posees.some(function (p) { return seTouchent(b, p, 4); })) break;
+    var l = e.tx.textContent.length * LARG_SIGNE, cote = Math.cos(rad(e.a)) >= 0 ? 1 : -1;
+    var essais = [
+      { x: e.x + cote * (e.rh + 6), y: e.y + 4, ancre: cote > 0 ? 'start' : 'end' },
+      { x: e.x - cote * (e.rh + 6), y: e.y + 4, ancre: cote > 0 ? 'end' : 'start' },
+      { x: e.x, y: e.y + e.rh + 13, ancre: 'middle' },
+      { x: e.x, y: e.y - e.rh - 6, ancre: 'middle' }
+    ];
+    var choix = null;
+    for (var i = 0; i < essais.length && !choix; i++) {
+      var s = essais[i], x0 = s.ancre === 'start' ? s.x : s.ancre === 'end' ? s.x - l : s.x - l / 2;
+      var b = { x0: x0, x1: x0 + l, y0: s.y - HAUT_SIGNE, y1: s.y + 3 };
+      var gene = obstacles.some(function (o) { return !(Math.abs(o.x0 + o.x1 - 2 * e.x) < 1 && Math.abs(o.y0 + o.y1 - 2 * e.y) < 1) && seTouchent(b, o, 1); });
+      if (!gene && !posees.some(function (p) { return seTouchent(b, p, 3); })) choix = { s: s, b: b };
     }
-    e.tx.setAttribute('x', b.x.toFixed(1)); e.tx.setAttribute('y', b.y.toFixed(1)); e.boite = b; posees.push(b);
-    var a = surCercle(e.a, RAYON + 56), milieu = b.y - 4, pts;
-    if (e.ancre === 'middle') pts = a[0].toFixed(1) + ',' + a[1].toFixed(1) + ' ' + b.x.toFixed(1) + ',' + (e.dy < 0 ? b.y + 4 : b.y - 12).toFixed(1);
-    else {
-      var sens = e.ancre === 'start' ? 1 : -1, bout = (e.ancre === 'start' ? b.x0 : b.x1) - sens * 7, coude = bout - sens * 16;
-      pts = a[0].toFixed(1) + ',' + a[1].toFixed(1) + ' ' + coude.toFixed(1) + ',' + milieu.toFixed(1) + ' ' + bout.toFixed(1) + ',' + milieu.toFixed(1);
-    }
-    e.trait.setAttribute('points', pts);
+    if (!choix) { e.tx.remove(); return; }
+    e.tx.setAttribute('x', choix.s.x.toFixed(1)); e.tx.setAttribute('y', choix.s.y.toFixed(1)); e.tx.setAttribute('text-anchor', choix.s.ancre);
+    e.boite = choix.b; posees.push(choix.b);
   });
 }
-function cadrer(liste, ecussons) {
-  var x0 = CX - RAYON - 20, x1 = CX + RAYON + 20, y0 = CY - RAYON - 20, y1 = CY + RAYON + 20;
-  ecussons.forEach(function (e) { x0 = Math.min(x0, e.x - 30); x1 = Math.max(x1, e.x + 30); y0 = Math.min(y0, e.y - 30); y1 = Math.max(y1, e.y + 30); });
+function cadrer(liste) {
+  var R = R_MAT + 24, x0 = CX - R, x1 = CX + R, y0 = CY - R, y1 = CY + R;
   liste.forEach(function (e) { var b = e.boite; if (!b) return; x0 = Math.min(x0, b.x0); x1 = Math.max(x1, b.x1); y0 = Math.min(y0, b.y0); y1 = Math.max(y1, b.y1); });
-  var m = 14;
+  var m = 10;
   $('carte').setAttribute('viewBox', Math.round(x0 - m) + ' ' + Math.round(y0 - m) + ' ' + Math.round(x1 - x0 + 2 * m) + ' ' + Math.round(y1 - y0 + 2 * m));
 }
 
@@ -625,17 +651,28 @@ function coeur(carte) {
 
 /* ---------- Le panneau déporté ---------- */
 function marquerChoisi() { document.querySelectorAll('#carte .module').forEach(function (m) { m.classList.toggle('choisi', +m.dataset.id === etat.choisi); }); }
-function montrer(it, g) {
-  if (!it.d) return panneauSurplus(it.arc, it.surplus);
-  etat.choisi = it.d.id; marquerChoisi();
-  var d = it.d, p = $('panneau'); p.textContent = '';
-  var arc = ARCS.filter(function (a) { return a.id === arcDe(d); })[0];
-  p.appendChild(el('p', { classe: 'mono haut', style: 'color:' + arc.couleur, texte: d.etape === 'formalites' ? 'Signé · formalités' : LIBELLES[d.etape] }));
+function avancement(d) {
+  var x = T.delais(d, etat.aujourdhui), t = x.type;
+  if (d.signature_le) return { texte: 'Signé le ' + fr(d.signature_le) + ' — classement le ' + fr(d.classe_le), classe: '' };
+  var base = t.depuis === 'deces' ? 'Délai fiscal (6 mois après le décès)' : 'Délai moyen ' + x.duree + ' jours';
+  if (x.decesManquant) return { texte: 'Date de décès à renseigner — délai compté depuis l’ouverture, au ' + fr(x.fin), classe: 'alerte' };
+  if (x.reste < 0) return { texte: base + ' dépassé de ' + (-x.reste) + ' jour' + (x.reste < -1 ? 's' : '') + ' (' + fr(x.fin) + ')', classe: 'alerte' };
+  return { texte: base + ' : jour ' + x.ecoule + ' sur ' + x.duree + ', échéance au ' + fr(x.fin), classe: x.part >= 0.75 ? 'alerte' : '' };
+}
+function montrer(d) {
+  etat.choisi = d.id; marquerChoisi();
+  var p = $('panneau'); p.textContent = '';
+  var t = T.type(d.type_dossier), m = T.matiere(t.matiere);
+  p.appendChild(el('p', { classe: 'mono haut', style: 'color:' + t.couleur, texte: m.nom + ' · ' + t.nom.replace(/ \(.*\)$/, '') + (d.etape === 'formalites' ? ' · formalités' : d.etape === 'avant_contrat' ? ' · avant-contrat' : '') }));
   p.appendChild(el('h3', { texte: d.intitule }));
   p.appendChild(el('p', { texte: 'Dossier Outlook : ' + d.nom_outlook }));
-  if (d.signature_le) p.appendChild(el('p', { texte: 'Signé le ' + fr(d.signature_le) + ' — classement le ' + fr(d.classe_le) }));
-  else if (d.signature_prevue) p.appendChild(el('p', { classe: signatureDepassee(d) ? 'rouge' : '', texte: 'Signature prévue le ' + fr(d.signature_prevue) + (signatureDepassee(d) ? ' — date dépassée' : '') }));
-  else p.appendChild(el('p', { classe: 'alerte', texte: 'Date de signature à renseigner' }));
+  var av = avancement(d);
+  p.appendChild(el('p', { classe: av.classe, texte: av.texte }));
+  if (!d.signature_le) {
+    if (d.signature_prevue) p.appendChild(el('p', { classe: signatureDepassee(d) ? 'rouge' : '', texte: 'Signature prévue le ' + fr(d.signature_prevue) + (signatureDepassee(d) ? ' — date dépassée' : '') }));
+    else p.appendChild(el('p', { classe: 'alerte', texte: 'Date de signature à renseigner' }));
+    if (d.prochaine_echeance) p.appendChild(el('p', { classe: echeanceDepassee(d) ? 'rouge' : '', texte: 'Prochaine échéance de l’acte : ' + fr(d.prochaine_echeance) + (echeanceDepassee(d) ? ' — dépassée' : '') }));
+  }
   p.appendChild(el('p', { texte: '0 relance — ' + (d.dernier_evt ? 'dernier échange le ' + fr(d.dernier_evt) : 'aucun échange') }));
   if (d.rappels_echus) p.appendChild(el('p', { classe: 'alerte', texte: d.rappels_echus + ' rappel' + (d.rappels_echus > 1 ? 's' : '') + ' dû' + (d.rappels_echus > 1 ? 's' : '') }));
   else if (d.rappels_ouverts) p.appendChild(el('p', { texte: d.rappels_ouverts + ' rappel' + (d.rappels_ouverts > 1 ? 's' : '') + ' en attente' }));
@@ -662,6 +699,10 @@ function panneauATraiter() {
         el('button', { classe: 'bouton petit', texte: 'Reporter', onclick: function () { rappelAction('rappel_reporter', x.r.id); } })
       ])
     ]));
+    else if (x.type === 'echeance') ul.appendChild(el('li', {}, [
+      el('b', { texte: x.x.intitule, onclick: function () { ouvrir(x.x.dossier_id); } }),
+      el('span', { classe: x.n < 0 ? 'rouge' : '', texte: x.x.libelle + (x.n < 0 ? ' — échéance dépassée (' + fr(x.x.echeance) + ')' : ' — le ' + fr(x.x.echeance) + (x.n === 0 ? ', aujourd’hui' : ', dans ' + x.n + ' jour' + (x.n > 1 ? 's' : ''))) })
+    ]));
     else ul.appendChild(el('li', {}, [
       el('b', { texte: x.d.intitule, onclick: function () { ouvrir(x.d.id); } }),
       el('span', { classe: x.type === 'depassee' ? 'rouge' : '', texte: x.type === 'depassee' ? 'Date de signature dépassée (' + fr(x.d.signature_prevue) + ')' : 'Signature le ' + fr(x.d.signature_prevue) + (x.n === 0 ? ', aujourd’hui' : ', dans ' + x.n + ' jour' + (x.n > 1 ? 's' : '')) })
@@ -670,15 +711,6 @@ function panneauATraiter() {
   if (l.length) p.appendChild(ul);
   p.appendChild(el('p', { texte: 'Les relances à faire apparaîtront ici en tête dès que la messagerie sera branchée.' }));
 }
-function panneauSurplus(arc, liste) {
-  var p = $('panneau'); p.textContent = '';
-  p.appendChild(el('p', { classe: 'mono haut', style: 'color:' + arc.couleur, texte: arc.nom }));
-  p.appendChild(el('h3', { texte: liste.length + ' autres dossiers' }));
-  var ul = el('ul');
-  liste.forEach(function (d) { ul.appendChild(el('li', {}, [el('b', { texte: d.intitule, onclick: function () { ouvrir(d.id); } }), el('span', { texte: d.nom_outlook })])); });
-  p.appendChild(ul);
-}
-function listeArc(arc, liste) { panneauSurplus(arc, liste); }
 function rappelAction(action, id) {
   api('POST', { action: action, rappel_id: id }).then(function () { return etat.ouvert ? ouvrir(etat.ouvert) : null; }).then(charger).catch(alerte);
 }
@@ -688,12 +720,13 @@ document.addEventListener('keydown', function (e) { if (e.key === 'Escape') ferm
 /* ---------- Repli en liste ---------- */
 function dessinerRepli(lots) {
   var r = $('repli'); r.textContent = '';
+  if (!lots.length) r.appendChild(el('p', { classe: 'sous', texte: 'Aucun dossier ouvert.' }));
   lots.forEach(function (lot) {
-    r.appendChild(el('h2', {}, [el('i', { style: 'background:' + lot.arc.couleur }), lot.arc.nom.charAt(0) + lot.arc.nom.slice(1).toLowerCase() + ' (' + lot.tous.length + ')']));
+    r.appendChild(el('h2', {}, [el('i', { style: 'background:' + lot.type.couleur }), lot.type.nom + ' (' + lot.tous.length + ')']));
     lot.tous.forEach(function (d) {
-      var niv = niveau(d);
-      r.appendChild(el('a', { style: 'border-left-color:' + (niv === 2 ? ROUGE : niv === 1 ? ORANGE : lot.arc.couleur), onclick: function () { ouvrir(d.id); } }, [
-        el('b', { texte: d.intitule }), el('span', { texte: d.nom_outlook + (d.signature_prevue && !d.signature_le ? ' — signature ' + fr(d.signature_prevue) : '') })
+      var x = T.delais(d, etat.aujourdhui);
+      r.appendChild(el('a', { style: 'border-left-color:' + teinteDe(d, x), onclick: function () { ouvrir(d.id); } }, [
+        el('b', { texte: d.intitule }), el('span', { texte: d.nom_outlook + ' — ' + avancement(d).texte })
       ]));
     });
   });
@@ -726,6 +759,9 @@ function ouvrir(id) {
     v.appendChild(et);
     if (d.etape === 'abandonne') v.appendChild(el('p', { classe: 'sous', texte: 'Abandonné : ' + (d.motif_abandon || '') + '. Si l’opération repart, créez un nouveau dossier.' }));
     else if (d.signature_le) v.appendChild(el('p', { classe: 'sous', texte: 'Classement dans « signés » le ' + fr(d.classe_le) + '.' }));
+
+    v.appendChild(el('p', { classe: 'sous', style: 'color:' + T.type(d.type_dossier).couleur, texte: T.matiere(T.type(d.type_dossier).matiere).nom + ' · ' + T.type(d.type_dossier).nom + ' — ' + avancement(d).texte }));
+    if (d.etape !== 'abandonne' && !d.signature_le) v.appendChild(blocEcheances(d, j.echeances || []));
 
     var ouverts = j.rappels.filter(function (r) { return !r.fait_le; });
     var champR = el('input', { type: 'text', maxlength: '500', placeholder: 'Nouveau rappel', 'aria-label': 'Texte du rappel' });
@@ -780,11 +816,52 @@ function ouvrir(id) {
   }).catch(alerte);
 }
 
+/* ---------- Échéances datées tirées de l'acte ---------- */
+function blocEcheances(d, liste) {
+  var ouvertes = liste.filter(function (x) { return !x.faite_le; });
+  var ul = el('ul', { classe: 'chrono rappels' });
+  ouvertes.forEach(function (x) {
+    var passee = x.echeance < etat.aujourdhui, proche = !passee && ecart(etat.aujourdhui, x.echeance) <= 15;
+    ul.appendChild(el('li', {}, [
+      el('span', { classe: passee ? 'rouge-fort' : proche ? 'echu' : '', texte: fr(x.echeance) + ' — ' + x.libelle }),
+      el('span', { classe: 'petits' }, [
+        el('button', { classe: 'bouton petit', texte: 'Acquise', title: 'Condition levée, prêt obtenu…', onclick: function () { echeanceAction('echeance_faite', x.id, d.id); } }),
+        el('button', { classe: 'bouton petit', texte: 'Retirer', onclick: function () { if (window.confirm('Retirer l’échéance « ' + x.libelle + ' » ?')) echeanceAction('echeance_retirer', x.id, d.id); } })
+      ])
+    ]));
+  });
+  var sel = el('select', { 'aria-label': 'Objet de l’échéance' });
+  etat.libellesEcheance.concat(['Autre échéance…']).forEach(function (l) { sel.appendChild(el('option', { value: l, texte: l })); });
+  var libre = el('input', { type: 'text', maxlength: '200', placeholder: 'Précisez l’échéance', classe: 'cache' });
+  sel.addEventListener('change', function () { libre.classList.toggle('cache', sel.value !== 'Autre échéance…'); if (!libre.classList.contains('cache')) libre.focus(); });
+  var jour = el('input', { type: 'date', 'aria-label': 'Date de l’échéance', style: 'max-width:170px' });
+  var err = el('div', { classe: 'erreur' });
+  return el('section', { classe: 'bloc' }, [
+    el('h3', { texte: 'Échéances de l’acte' }),
+    ouvertes.length ? ul : el('p', { classe: 'sous', texte: 'Aucune échéance inscrite (conditions suspensives, prêt, date butoir de réitération…).' }),
+    el('div', { classe: 'ligne' }, [sel]),
+    el('div', { classe: 'ligne' }, [libre]),
+    el('div', { classe: 'ligne' }, [jour, el('button', { classe: 'bouton petit', texte: 'Inscrire l’échéance', onclick: function () {
+      err.textContent = '';
+      var lib = sel.value === 'Autre échéance…' ? libre.value.trim() : sel.value;
+      if (!lib) { err.textContent = 'Précisez l’échéance.'; return libre.focus(); }
+      if (!jour.value) { err.textContent = 'Indiquez la date.'; return jour.focus(); }
+      api('POST', { action: 'echeance', id: d.id, libelle: lib, date: jour.value }).then(function () { return ouvrir(d.id); }).then(charger).catch(function (x) { err.textContent = x.message; });
+    } })]),
+    err,
+    el('p', { classe: 'sous', texte: 'Une échéance à moins de 15 jours ressort dans « À traiter » ; dépassée, le dossier passe en rouge. Elle rejoindra le courriel de 7 h avec la messagerie.' })
+  ]);
+}
+function echeanceAction(action, xid, id) {
+  api('POST', { action: action, echeance_id: xid }).then(function () { return ouvrir(id); }).then(charger).catch(alerte);
+}
+
 /* ---------- Fiche (création et modification) ---------- */
 function formulaire(d, prop) {
   var nouveau = !d; d = d || {};
   if (prop) d = { intitule: prop.intitule, partie1: prop.partie1, partie2: prop.partie2, numero: prop.numero, signature_prevue: prop.signature_prevue,
-    adresses: prop.adresses, collaborateur: prop.collaborateur, collab_relances: false, etape: prop.etape };
+    adresses: prop.adresses, collaborateur: prop.collaborateur, collab_relances: false, etape: prop.etape,
+    type_dossier: prop.type_dossier, date_ouverture: prop.date_ouverture };
   var f = el('form', { classe: 'fiche' });
   function c(nom) { return f.querySelector('[name="' + nom + '"]'); }
   function champ(lib, nom, type, val, attrs) {
@@ -793,6 +870,35 @@ function formulaire(d, prop) {
     return el('label', {}, [lib, i]);
   }
   f.appendChild(champ('Intitulé', 'intitule', 'text', d.intitule, { required: '', maxlength: '200' }));
+  /* type de dossier, rangé par matière */
+  var typeSel = el('select', { name: 'type_dossier', required: '' }, [el('option', { value: '', texte: '— choisir —' })]);
+  T.MATIERES.forEach(function (m) {
+    var og = el('optgroup', { label: m.nom });
+    T.TYPES.filter(function (t) { return t.matiere === m.id; }).forEach(function (t) {
+      og.appendChild(el('option', { value: t.id, texte: t.nom.replace(/ \(.*\)$/, '') + ' — ' + (t.mois ? t.mois + ' mois après le décès' : t.delai + ' j' + (t.ajustable ? ', ajustable' : '')) }));
+    });
+    typeSel.appendChild(og);
+  });
+  typeSel.value = d.type_dossier || '';
+  if (prop && d.type_dossier) typeSel.classList.add('prerempli');
+  var delaiChamp = champ('Délai moyen pour ce dossier (jours)', 'delai_jours', 'number', d.delai_jours || '', { min: '1', max: '1500', step: '1' });
+  var decesChamp = champ('Date de décès (départ du délai fiscal de 6 mois)', 'date_deces', 'date', d.date_deces);
+  f.appendChild(el('div', { classe: 'deux' }, [
+    el('label', {}, ['Type de dossier', typeSel]),
+    champ('Date d’ouverture', 'date_ouverture', 'date', d.date_ouverture || etat.aujourdhui, { required: '' })
+  ]));
+  if (prop && d.date_ouverture) f.querySelector('[name="date_ouverture"]').classList.add('prerempli');
+  var ligneType = el('div', { classe: 'deux' }, [delaiChamp, decesChamp]);
+  f.appendChild(ligneType);
+  function majType(change) {
+    var t = typeSel.value ? T.type(typeSel.value) : null;
+    delaiChamp.classList.toggle('cache', !(t && t.ajustable));
+    decesChamp.classList.toggle('cache', !(t && t.depuis === 'deces'));
+    var di = c('delai_jours');
+    if (t && t.ajustable && (change || !di.value)) di.value = t.delai;
+    ligneType.classList.toggle('cache', delaiChamp.classList.contains('cache') && decesChamp.classList.contains('cache'));
+  }
+  typeSel.addEventListener('change', function () { majType(true); });
   f.appendChild(el('div', { classe: 'deux' }, [
     champ('Vendeur, ou nom unique (succession, société)', 'partie1', 'text', d.partie1, { required: '', maxlength: '120' }),
     champ('Acquéreur (facultatif)', 'partie2', 'text', d.partie2, { maxlength: '120' })
@@ -817,14 +923,15 @@ function formulaire(d, prop) {
     var p1 = c('partie1').value.trim().toUpperCase(), p2 = c('partie2').value.trim().toUpperCase(), n = c('numero').value.trim();
     apercu.textContent = 'Dossier Outlook : ' + ([n, p2 ? p1 + ' / ' + p2 : p1].filter(Boolean).join(' ') || '—');
   }
-  f.addEventListener('input', majApercu); majApercu(); f.appendChild(apercu);
+  f.addEventListener('input', majApercu); majApercu(); f.appendChild(apercu); majType(false);
   var err = el('div', { classe: 'erreur' }); f.appendChild(err);
   f.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort', type: 'submit', texte: nouveau ? 'Créer le dossier' : 'Enregistrer la fiche' })]));
   f.addEventListener('submit', function (e) {
     e.preventDefault(); err.textContent = '';
     var donnees = { action: nouveau ? 'creer' : 'modifier', id: d.id, intitule: c('intitule').value, partie1: c('partie1').value, partie2: c('partie2').value,
       numero: c('numero').value, signature_prevue: c('signature_prevue').value || null, adresses: c('adresses').value,
-      collaborateur: c('collaborateur').value, collab_relances: c('collab_relances').checked };
+      collaborateur: c('collaborateur').value, collab_relances: c('collab_relances').checked,
+      type_dossier: c('type_dossier').value, date_ouverture: c('date_ouverture').value, date_deces: c('date_deces').value || null, delai_jours: c('delai_jours').value || null };
     if (nouveau) donnees.etape = c('etape').value;
     if (prop) donnees.mail = prop.mail;
     api('POST', donnees).then(function (j) { return charger().then(function () { return ouvrir(j.dossier.id); }); }).catch(function (x) { err.textContent = x.message; });

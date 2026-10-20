@@ -168,6 +168,10 @@
     return meilleure;
   }
 
+  function devinerType(t) {
+    var T = racine && racine.SuiviTypes ? racine.SuiviTypes : (typeof require === 'function' ? require('./types.js') : null);
+    return T ? T.deviner(t) : null;
+  }
   function proposer(mail, aujourdhui, moi) {
     moi = (moi || MOI).toLowerCase();
     var objet = nettoyerObjet(mail.objet);
@@ -187,6 +191,8 @@
       numero: numero(mail.objet + '\n' + texte.slice(0, 2000)) || '',
       signature_prevue: signature(objet + ' ' + texte, aujourdhui) || '',
       adresses: adresses, collaborateur: collaborateur || '',
+      type_dossier: devinerType(objet + ' ' + texte.slice(0, 1500)) || '',
+      date_ouverture: dateMail,
       etape: /\b(promesse|compromis|avant[- ]contrat)\b/i.test(objet) && /\b(r[ée]it[ée]ration|acte authentique|acte de vente)\b/i.test(objet + ' ' + texte.slice(0, 3000)) ? 'avant_contrat' : 'en_cours',
       mail: {
         objet: (mail.objet || '').trim().slice(0, 300),
