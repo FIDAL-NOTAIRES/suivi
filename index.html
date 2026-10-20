@@ -87,7 +87,7 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .borne{font:600 8.5px/1 ui-monospace,'Cascadia Mono',Menlo,monospace;letter-spacing:.08em;opacity:.8;pointer-events:none}
 .titre-mat{font:400 12px/1 Georgia,serif;letter-spacing:.3em}
 .titre-arc{font-size:9px}
-.barre-nom{font-size:10px;letter-spacing:.05em}
+.barre-nom{font-family:ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;font-weight:600;letter-spacing:.05em;paint-order:stroke;stroke:#0A1C2C;stroke-width:2.6px;stroke-linejoin:round;pointer-events:none}
 .rouge-fort{color:#FF8FAE;font-weight:600}
 .legende span{white-space:nowrap}
 @keyframes influx{from{stroke-dashoffset:var(--long,200)}to{stroke-dashoffset:0}}
@@ -416,7 +416,7 @@ function hexa(cx, cy, r) {
    rangés par matière. Chaque dossier a son rayon : il part du centre à l'ouverture et
    s'éloigne jusqu'au bord, qui marque la durée moyenne du type ; sa teinte vire à
    l'orange à l'approche de ce délai. Les signés (formalités) sont au-delà du bord, avec la plume. */
-var R_ANNEAU = 151, R0 = 180, R1 = 302, R_SIGNES = 338, R_MAT = 366;
+var R_ANNEAU = 151, R0 = 158, R1 = 302, R_SIGNES = 338, R_MAT = 366;
 var GRADUATIONS = [0.25, 0.5, 0.75];
 function rayonDe(part) { return R0 + (R1 - R0) * Math.min(part, 1.04); }
 function melange(c1, c2, k) {
@@ -455,6 +455,7 @@ function dessiner() {
   var defs = sv('defs'); carte.appendChild(defs);
   defs.innerHTML = '<radialGradient id="halo-hud"><stop offset="0%" stop-color="#33838B" stop-opacity=".5"/><stop offset="68%" stop-color="#0F2238" stop-opacity=".3"/><stop offset="100%" stop-color="#081625" stop-opacity="0"/></radialGradient>' +
     '<radialGradient id="reacteur-hud"><stop offset="0%" stop-color="#EAFEFF" stop-opacity=".95"/><stop offset="40%" stop-color="#6DD5DC" stop-opacity=".55"/><stop offset="100%" stop-color="#33838B" stop-opacity="0"/></radialGradient>' +
+    '<filter id="lueur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="2.2" result="f"/><feMerge><feMergeNode in="f"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
     '<radialGradient id="ecran-hud" cx="50%" cy="42%" r="72%"><stop offset="0%" stop-color="#17384F"/><stop offset="62%" stop-color="#102A40"/><stop offset="100%" stop-color="#0A1C2C"/></radialGradient>';
 
   coeur(carte);
@@ -482,7 +483,6 @@ function dessiner() {
   }
   /* taille des écussons : elle suit l'écart le plus serré au départ des rayons */
   var pasMin = Math.min.apply(null, spans.map(function (s, i) { return s / lots[i].tous.length; }));
-  var RH = Math.max(8, Math.min(15, R0 * rad(pasMin) * 0.4));
   var debut = -90 - spans[0] / 2, recherche = sansAccent($('recherche').value.trim());
   var aPlacer = [], ecussons = [], allumage = 0, matPrec = null, matDebut = 0;
   var traitsMat = [];
@@ -565,59 +565,77 @@ function dessiner() {
     var tp = sv('textPath', { href: '#mat-' + i, startOffset: '50%', 'text-anchor': 'middle' });
     tp.textContent = tm.m.nom.toUpperCase(); t.appendChild(tp); carte.appendChild(t);
   });
-  poserBarres(aPlacer, ecussons);
+  poserBarres(aPlacer, Math.max(9, Math.min(16, R_ANNEAU * rad(pasMin) * 0.62)), pasMin);
   cadrer(aPlacer);
   setTimeout(function () { carte.querySelectorAll('.segment.allumage').forEach(function (n) { n.classList.remove('allumage'); }); }, 1600);
   if (etat.choisi == null) panneauATraiter();
 }
 function cercleD(r) { return 'M' + (CX + r) + ',' + CY + ' a' + r + ',' + r + ' 0 1 1 -' + (2 * r) + ',0 a' + r + ',' + r + ' 0 1 1 ' + (2 * r) + ',0'; }
 
-/* Chaque dossier est une barre portant son nom, posée sur son rayon à la distance qui
-   correspond à son avancement. Si deux barres se chevauchent, la seconde glisse un peu
-   le long de son rayon ; un point marque alors sa position exacte. */
-var LARG_SIGNE = 6.5, HAUT_BARRE = 18;
-function seTouchent(A, B, m) { m = m || 3; return A.x0 < B.x1 + m && B.x0 < A.x1 + m && A.y0 < B.y1 + m && B.y0 < A.y1 + m; }
-function poserBarres(liste, bornes) {
-  var obstacles = bornes.map(function (e) { return { x0: e.x - e.m, x1: e.x + e.m, y0: e.y - 6, y1: e.y + 6 }; });
-  var disque = R_ANNEAU + 8, posees = [];
+/* Chaque dossier est une barre posée sur son rayon, dont un côté touche l'anneau du centre.
+   La barre court jusqu'au bord du secteur (le délai moyen du type) ; sa partie pleine
+   montre le temps écoulé, et sa teinte vire à l'orange à l'approche du délai.
+   Le nom du dossier est écrit dans la barre, dans le sens de la lecture. */
+var FORME = 'eventail';   /* 'segments' (barre à segments, façon PHARE), 'eventail' (part d'anneau), 'jauge' (barre pleine) */
+function secteurD(a1, a2, r1, r2) {
+  var p1 = surCercle(a1, r1), p2 = surCercle(a1, r2), p3 = surCercle(a2, r2), p4 = surCercle(a2, r1), g = (a2 - a1) > 180 ? 1 : 0;
+  return 'M' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' L' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1) +
+    ' A' + r2 + ',' + r2 + ' 0 ' + g + ' 1 ' + p3[0].toFixed(1) + ',' + p3[1].toFixed(1) + ' L' + p4[0].toFixed(1) + ',' + p4[1].toFixed(1) +
+    ' A' + r1 + ',' + r1 + ' 0 ' + g + ' 0 ' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' Z';
+}
+function poserBarres(liste, largeur, pas) {
+  var w = largeur, debutB = R_ANNEAU + 7, taille = Math.max(7.5, Math.min(10, w - 4));
   liste.forEach(function (e) {
-    var nom = nomCourt(e.d), marque = e.rappelDu || e.signe;
-    var l = nom.length * LARG_SIGNE + 18 + (marque ? 16 : 0);
-    function boite(r) {
-      var p = surCercle(e.ang, r);
-      return { x0: p[0] - l / 2, x1: p[0] + l / 2, y0: p[1] - HAUT_BARRE / 2, y1: p[1] + HAUT_BARRE / 2, x: p[0], y: p[1], r: r };
+    var g = e.g, teinte = e.teinte, ang = e.ang, t = T.type(e.d.type_dossier);
+    var fin = e.signe ? R_SIGNES : Math.max(R1, e.r), plein = e.signe ? R_SIGNES : Math.max(debutB + 4, e.r);
+    var rot = 'rotate(' + ang.toFixed(2) + ' ' + CX + ' ' + CY + ')', y = CY - w / 2;
+    var couleurA = function (r) { /* la couleur suit la position : teinte du type, puis orange après la moitié du délai */
+      if (e.niv) return ROUGE; if (e.signe) return t.couleur;
+      var part = (r - R0) / (R1 - R0); return melange(t.couleur, ORANGE, Math.max(0, Math.min(1, (part - 0.5) / 0.5)));
+    };
+    if (FORME === 'eventail') {
+      var dA = Math.min(pas * 0.42, 14);
+      g.appendChild(sv('path', { 'class': 'cadre-survol', d: secteurD(ang - dA - 0.8, ang + dA + 0.8, debutB - 3, fin + 3), fill: 'none', stroke: teinte, 'stroke-width': '1.2' }));
+      g.appendChild(sv('path', { 'class': 'ecusson', d: secteurD(ang - dA, ang + dA, debutB, fin), fill: t.couleur, 'fill-opacity': '.07', stroke: t.couleur, 'stroke-opacity': '.35', 'stroke-width': '1' }));
+      var part = sv('path', { 'class': 'segment allumage', d: secteurD(ang - dA, ang + dA, debutB, plein), fill: 'url(#deg-' + e.d.id + ')', opacity: e.signe ? '.5' : '.9', 'pointer-events': 'none', filter: 'url(#lueur)' });
+      var p0 = surCercle(ang, debutB), p1 = surCercle(ang, R1);
+      var deg = sv('linearGradient', { id: 'deg-' + e.d.id, gradientUnits: 'userSpaceOnUse', x1: p0[0].toFixed(1), y1: p0[1].toFixed(1), x2: p1[0].toFixed(1), y2: p1[1].toFixed(1) });
+      [[0, couleurA(R0)], [0.5, couleurA(R0 + (R1 - R0) * 0.5)], [1, couleurA(R1)]].forEach(function (st) { deg.appendChild(sv('stop', { offset: st[0], 'stop-color': st[1] })); });
+      $('carte').querySelector('defs').appendChild(deg);
+      part.style.setProperty('--opf', e.signe ? '.5' : '.9'); part.style.animationDelay = (80 + e.rang * 35) + 'ms';
+      g.appendChild(part);
+      /* liseré lumineux au front de progression */
+      if (!e.signe) g.appendChild(sv('path', { d: arcD(plein, ang - dA, ang + dA), fill: 'none', stroke: '#F4FBFD', 'stroke-width': '1.6', 'stroke-opacity': '.85', 'pointer-events': 'none' }));
+    } else if (FORME === 'segments') {
+      var seg = 7, inter = 2.4, n = 0;
+      g.appendChild(sv('rect', { 'class': 'cadre-survol', x: CX + debutB - 4, y: (y - 4).toFixed(1), width: (fin - debutB + 8).toFixed(1), height: (w + 8).toFixed(1), rx: '3', fill: 'none', stroke: teinte, 'stroke-width': '1.1', transform: rot }));
+      g.appendChild(sv('rect', { 'class': 'ecusson', x: CX + debutB, y: y.toFixed(1), width: (fin - debutB).toFixed(1), height: w.toFixed(1), fill: 'transparent', stroke: 'none', transform: rot }));
+      var blocs = sv('g', { transform: rot, 'pointer-events': 'none' }), lueur = sv('g', { transform: rot, 'pointer-events': 'none', filter: 'url(#lueur)' });
+      for (var r = debutB; r + seg <= fin + 0.5; r += seg + inter, n++) {
+        var allume = r + seg / 2 <= plein;
+        var rc = sv('rect', { x: (CX + r).toFixed(1), y: y.toFixed(1), width: seg, height: w.toFixed(1), rx: '1', fill: allume ? couleurA(r + seg / 2) : t.couleur, opacity: allume ? (e.signe ? '.5' : '.92') : '.10' });
+        if (allume) { rc.setAttribute('class', 'segment allumage'); rc.style.setProperty('--opf', e.signe ? '.5' : '.92'); rc.style.animationDelay = (80 + e.rang * 30 + n * 22) + 'ms'; lueur.appendChild(rc); }
+        else blocs.appendChild(rc);
+      }
+      g.appendChild(blocs); g.appendChild(lueur);
+    } else {
+      g.appendChild(sv('rect', { 'class': 'cadre-survol', x: CX + debutB - 3, y: (y - 3).toFixed(1), width: (fin - debutB + 6).toFixed(1), height: (w + 6).toFixed(1), rx: '4', fill: 'none', stroke: teinte, 'stroke-width': '1.2', transform: rot }));
+      g.appendChild(sv('rect', { 'class': 'ecusson', x: CX + debutB, y: y.toFixed(1), width: (fin - debutB).toFixed(1), height: w.toFixed(1), rx: '2.5', fill: '#0C2134', stroke: teinte, 'stroke-opacity': '.55', 'stroke-width': '1.1', transform: rot }));
+      var rem = sv('rect', { 'class': 'segment allumage', x: CX + debutB, y: y.toFixed(1), width: Math.max(4, plein - debutB).toFixed(1), height: w.toFixed(1), rx: '2.5', fill: teinte, opacity: e.signe ? '.45' : '.85', transform: rot, 'pointer-events': 'none' });
+      rem.style.setProperty('--opf', e.signe ? '.45' : '.85'); rem.style.animationDelay = (80 + e.rang * 35) + 'ms';
+      g.appendChild(rem);
     }
-    function dansAnneau(b) {
-      var dx = Math.max(Math.abs(b.x - CX) - l / 2, 0), dy = Math.max(Math.abs(b.y - CY) - HAUT_BARRE / 2, 0);
-      return Math.sqrt(dx * dx + dy * dy) < disque;
-    }
-    var choix = null, decal = [0, 18, 36, -18, 54, -36, 72, 90];
-    for (var i = 0; i < decal.length && !choix; i++) {
-      var b = boite(e.r + decal[i]);
-      if (dansAnneau(b)) continue;
-      if (!posees.some(function (o) { return seTouchent(b, o, 4); }) && !obstacles.some(function (o) { return seTouchent(b, o, 2); })) choix = b;
-    }
-    if (!choix) { choix = boite(e.r); while (dansAnneau(choix)) choix = boite(choix.r + 10); }
-    posees.push(choix); e.boite = choix;
-    var g = e.g, teinte = e.teinte;
-    /* le rayon : une barre à segments depuis l'anneau jusqu'au dossier */
-    var p0 = surCercle(e.ang, R_ANNEAU + 7), p1 = surCercle(e.ang, choix.r);
-    var rayon = sv('line', { 'class': 'segment allumage rayon', x1: p0[0].toFixed(1), y1: p0[1].toFixed(1), x2: p1[0].toFixed(1), y2: p1[1].toFixed(1), stroke: teinte, 'stroke-width': '3', 'stroke-dasharray': '7 3', opacity: '.75' });
-    rayon.style.setProperty('--opf', '.75'); rayon.style.animationDelay = (80 + e.rang * 35) + 'ms';
-    g.appendChild(rayon);
-    if (choix.r !== e.r) { var pv = surCercle(e.ang, e.r); g.appendChild(sv('circle', { cx: pv[0].toFixed(1), cy: pv[1].toFixed(1), r: '3', fill: teinte })); }
-    var x0 = choix.x0, y0 = choix.y0;
-    g.appendChild(sv('rect', { 'class': 'cadre-survol', x: (x0 - 4).toFixed(1), y: (y0 - 4).toFixed(1), width: (l + 8).toFixed(1), height: HAUT_BARRE + 8, rx: '5', fill: 'none', stroke: teinte, 'stroke-width': '1.2' }));
-    g.appendChild(sv('rect', { 'class': 'ecusson', x: x0.toFixed(1), y: y0.toFixed(1), width: l.toFixed(1), height: HAUT_BARRE, rx: '3', fill: '#0C2134', stroke: teinte, 'stroke-width': '1.4' }));
-    g.appendChild(sv('rect', { x: x0.toFixed(1), y: y0.toFixed(1), width: '5', height: HAUT_BARRE, rx: '2', fill: teinte, 'pointer-events': 'none' }));
-    var xt = x0 + 12;
-    if (marque) {
-      g.appendChild(sv('use', { href: '#' + (e.rappelDu ? 'i-cloche' : 'i-plume'), x: (x0 + 9).toFixed(1), y: (y0 + 3).toFixed(1), width: 12, height: 12, color: teinte, 'pointer-events': 'none' }));
-      xt += 16;
-    }
-    var tx = sv('text', { 'class': 'etiquette barre-nom', x: xt.toFixed(1), y: (y0 + 12.5).toFixed(1), fill: e.niv ? '#FF8FAE' : '#E1ECF2' });
+    /* le nom, dans la barre ; à gauche de l'anneau on le retourne pour qu'il se lise de gauche à droite */
+    var dispo = fin - debutB - 12, nom = nomCourt(e.d), max = Math.floor(dispo / (taille * 0.66));
+    if (nom.length > max) nom = nom.slice(0, Math.max(3, max - 1)) + '…';
+    var gauche = Math.cos(rad(ang)) < -0.01;
+    var tx = sv('text', { 'class': 'barre-nom', 'font-size': taille.toFixed(1), y: (CY + taille * 0.36).toFixed(1),
+      x: gauche ? (CX - debutB - 7).toFixed(1) : (CX + debutB + 7).toFixed(1), 'text-anchor': gauche ? 'end' : 'start',
+      fill: e.niv ? '#FFC2D2' : '#F2F8FB', transform: 'rotate(' + (gauche ? ang + 180 : ang).toFixed(2) + ' ' + CX + ' ' + CY + ')' });
     tx.textContent = nom; g.appendChild(tx);
-    if (e.rappelDu || e.niv) g.appendChild(sv('circle', { 'class': 'pulse', cx: (x0 + l).toFixed(1), cy: y0.toFixed(1), r: '3.6', fill: e.niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' }));
+    var bout = surCercle(ang, fin + 11);
+    if (e.rappelDu || e.signe) g.appendChild(sv('use', { href: '#' + (e.rappelDu ? 'i-cloche' : 'i-plume'), x: (bout[0] - 7).toFixed(1), y: (bout[1] - 7).toFixed(1), width: 14, height: 14, color: e.rappelDu ? ORANGE : teinte, 'pointer-events': 'none' }));
+    if (e.rappelDu || e.niv) { var pt = surCercle(ang, fin + (e.rappelDu || e.signe ? 24 : 9)); g.appendChild(sv('circle', { 'class': 'pulse', cx: pt[0].toFixed(1), cy: pt[1].toFixed(1), r: '3.6', fill: e.niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' })); }
   });
 }
 function cadrer(liste) {
