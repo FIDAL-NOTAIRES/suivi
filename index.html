@@ -7,6 +7,7 @@
 <title>SUIVI — dossiers</title>
 <script src="https://connexion-omega.vercel.app/bandeau.js" defer></script>
 <script src="/calendrier.js"></script>
+<script src="/lecture.js"></script>
 <style>
 /* ------------------------------------------------------------------
    SUIVI — suivi des dossiers. Grammaire visuelle reprise de PHARE :
@@ -184,6 +185,17 @@ dialog input,dialog select{display:block;width:100%;margin-top:3px;padding:8px 1
 dialog select option{background:var(--ardoise)}
 dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 
+/* dépôt de mail */
+.depot{border:1.5px dashed #2F6E86;border-radius:6px;padding:12px 14px;color:#9FC4D2;font-size:13.5px;text-align:center;cursor:pointer;background:rgba(109,213,220,.04)}
+.depot:hover,.depot.survol{border-color:var(--jaune);color:#FFE38A;background:rgba(255,201,0,.06)}
+.depot input{display:none}
+.lu{border-left:3px solid var(--cyan);background:rgba(109,213,220,.07);padding:10px 12px;margin-top:10px;font-size:13.5px}
+.lu b{display:block;color:#EDF6FA;font-weight:600;margin-bottom:2px}
+.lu .apercu-mail{color:var(--gris);margin-top:6px;font-style:italic}
+.prerempli{border-left:3px solid var(--cyan)!important}
+#rideau{position:fixed;inset:0;z-index:50;background:rgba(8,22,37,.82);display:flex;align-items:center;justify-content:center;pointer-events:none}
+#rideau div{border:2px dashed var(--jaune);border-radius:12px;padding:40px 60px;font-family:Georgia,serif;font-size:22px;color:#FFE38A}
+
 /* écran d'accès */
 .acces{max-width:400px;margin:14vh auto;background:var(--ardoise);border:1px solid var(--bord);border-radius:10px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
 .acces h1{font-size:26px;letter-spacing:.14em;margin-bottom:6px}
@@ -225,6 +237,7 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
       <div class="marque"><div class="trait"></div><div><b>SUIVI</b><span class="mono" id="date-jour"></span></div></div>
       <label class="champ"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
         <input type="search" id="recherche" placeholder="Chercher un dossier, une partie…" aria-label="Chercher un dossier"></label>
+      <button class="bouton" id="deposer-mail" title="Ou glissez un mail n’importe où sur la page">Déposer un mail</button>
       <button class="bouton fort" id="nouveau">Nouveau dossier</button>
       <button class="bouton" id="verrouiller">Verrouiller</button>
     </div>
@@ -247,6 +260,8 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
   </div></footer>
 </div>
 
+<div id="rideau" class="cache"><div>Déposez le mail : SUIVI prépare la fiche</div></div>
+<input type="file" id="choix-mail" accept=".msg,.eml,message/rfc822" class="cache">
 <div class="voile cache" id="voile"></div>
 <aside class="volet cache" id="volet" role="dialog" aria-modal="true"></aside>
 
@@ -474,7 +489,8 @@ function dessiner() {
     t.appendChild(tp); carte.appendChild(t);
 
     if (!lot.montres.length) {
-      var pv = surCercle(debut + span / 2, RAYON + 40);
+      var pv = surCercle(debut + span / 2, RAYON + 30); pv[1] += 4;
+      ecussons.push({ x: pv[0], y: pv[1] });
       var v = sv('text', { 'class': 'vide-arc', x: pv[0].toFixed(1), y: pv[1].toFixed(1), 'text-anchor': 'middle' });
       v.textContent = 'aucun dossier'; carte.appendChild(v);
     }
@@ -735,6 +751,12 @@ function ouvrir(id) {
       ])
     ]));
 
+    var blocDepot = el('section', { classe: 'bloc bloc-depot' }, [
+      el('h3', { texte: 'Déposer un mail' }),
+      zoneDepot('Glissez ici un mail Outlook concernant ce dossier, ou cliquez pour le choisir', function (p) { montrerDepot(p); })
+    ]);
+    v.appendChild(blocDepot);
+
     var note = el('textarea', { maxlength: '2000', placeholder: 'Note : appel, rendez-vous…', 'aria-label': 'Note' });
     var ulC = el('ul', { classe: 'chrono' });
     j.evenements.forEach(function (e) { ulC.appendChild(el('li', {}, [el('span', { classe: 'd', texte: fr(e.date_evt) }), el('span', { classe: e.nature, texte: e.texte })])); });
@@ -760,12 +782,15 @@ function ouvrir(id) {
 }
 
 /* ---------- Fiche (création et modification) ---------- */
-function formulaire(d) {
+function formulaire(d, prop) {
   var nouveau = !d; d = d || {};
+  if (prop) d = { intitule: prop.intitule, partie1: prop.partie1, partie2: prop.partie2, numero: prop.numero, signature_prevue: prop.signature_prevue,
+    adresses: prop.adresses, collaborateur: prop.collaborateur, collab_relances: false, etape: prop.etape };
   var f = el('form', { classe: 'fiche' });
   function c(nom) { return f.querySelector('[name="' + nom + '"]'); }
   function champ(lib, nom, type, val, attrs) {
     var i = el('input', Object.assign({ type: type || 'text', name: nom }, attrs || {})); i.value = val || '';
+    if (prop && val) i.classList.add('prerempli');
     return el('label', {}, [lib, i]);
   }
   f.appendChild(champ('Intitulé', 'intitule', 'text', d.intitule, { required: '', maxlength: '200' }));
@@ -777,8 +802,13 @@ function formulaire(d) {
     champ('Numéro de dossier (facultatif)', 'numero', 'text', d.numero, { maxlength: '40' }),
     champ('Date de signature prévue', 'signature_prevue', 'date', d.signature_prevue)
   ]));
-  if (nouveau) f.appendChild(el('label', {}, ['Étape', el('select', { name: 'etape' }, [el('option', { value: 'en_cours', texte: 'En cours' }), el('option', { value: 'avant_contrat', texte: 'Avant-contrat' })])]));
+  if (nouveau) {
+    var sel = el('select', { name: 'etape' }, [el('option', { value: 'en_cours', texte: 'En cours' }), el('option', { value: 'avant_contrat', texte: 'Avant-contrat' })]);
+    if (d.etape === 'avant_contrat') { sel.value = 'avant_contrat'; sel.classList.add('prerempli'); }
+    f.appendChild(el('label', {}, ['Étape', sel]));
+  }
   var adr = el('textarea', { name: 'adresses', placeholder: 'Une adresse par ligne' }); adr.value = (d.adresses || []).join('\n');
+  if (prop && adr.value) adr.classList.add('prerempli');
   f.appendChild(el('label', {}, ['Adresses des correspondants déjà connues', adr]));
   f.appendChild(champ('Collaborateur référent (adresse)', 'collaborateur', 'email', d.collaborateur, { maxlength: '120' }));
   var cb = el('input', { type: 'checkbox', name: 'collab_relances' }); cb.checked = !!d.collab_relances;
@@ -797,16 +827,135 @@ function formulaire(d) {
       numero: c('numero').value, signature_prevue: c('signature_prevue').value || null, adresses: c('adresses').value,
       collaborateur: c('collaborateur').value, collab_relances: c('collab_relances').checked };
     if (nouveau) donnees.etape = c('etape').value;
+    if (prop) donnees.mail = prop.mail;
     api('POST', donnees).then(function (j) { return charger().then(function () { return ouvrir(j.dossier.id); }); }).catch(function (x) { err.textContent = x.message; });
   });
   return f;
 }
-$('nouveau').addEventListener('click', function () {
+$('nouveau').addEventListener('click', function () { nouveauDossier(null); });
+
+/* ---------- Mail glissé : lecture sur le poste et préremplissage ---------- */
+var chargementMsg = null;
+function lecteurMsg() {
+  if (window.MsgReader) return Promise.resolve();
+  if (!chargementMsg) chargementMsg = new Promise(function (ok, ko) {
+    var s = document.createElement('script'); s.src = '/vendor/msgreader.js'; s.onload = ok; s.onerror = function () { ko(new Error('Lecteur des fichiers .msg indisponible.')); };
+    document.head.appendChild(s);
+  });
+  return chargementMsg;
+}
+function lireMail(fichier) {
+  if (!fichier) return Promise.reject(new Error('Aucun fichier.'));
+  if (!/\.(msg|eml)$/i.test(fichier.name) && fichier.type !== 'message/rfc822') return Promise.reject(new Error('Glissez un mail Outlook (fichier .msg ou .eml).'));
+  return fichier.arrayBuffer().then(function (buf) {
+    var oct = new Uint8Array(buf);
+    var msg = /\.msg$/i.test(fichier.name) || (oct[0] === 0xD0 && oct[1] === 0xCF);
+    return (msg ? lecteurMsg() : Promise.resolve()).then(function () {
+      return SuiviLecture.proposer(SuiviLecture.lireOctets(fichier.name, oct), etat.aujourdhui);
+    });
+  });
+}
+function fichierDe(e) {
+  var dt = e.dataTransfer; if (!dt) return null;
+  if (dt.files && dt.files.length) return dt.files[0];
+  return null;
+}
+/* dossiers qui semblent concernés : une adresse déjà connue, ou les noms des parties dans l'objet */
+function candidats(prop) {
+  var objet = sansAccent(prop.mail.objet);
+  var adr = prop.adresses.concat(prop.collaborateur ? [prop.collaborateur] : []);
+  return etat.dossiers.filter(actif).map(function (d) {
+    var score = 0;
+    (d.adresses || []).forEach(function (a) { if (adr.indexOf(a) >= 0) score += 1; });
+    [d.partie1, d.partie2].forEach(function (n) { n = sansAccent(n || '').trim(); if (n.length > 2 && objet.indexOf(n) >= 0) score += 2; });
+    if (d.numero && objet.indexOf(sansAccent(d.numero)) >= 0) score += 3;
+    return { d: d, score: score };
+  }).filter(function (x) { return x.score > 0; }).sort(function (a, b) { return b.score - a.score; }).slice(0, 4);
+}
+function traiterMailGlisse(fichier) {
+  return lireMail(fichier).then(function (prop) {
+    var c = candidats(prop);
+    if (!c.length) return nouveauDossier(prop);
+    var v = enteteVolet('Mail déposé');
+    v.appendChild(resumeMail(prop));
+    v.appendChild(el('p', { classe: 'sous', texte: c.length > 1 ? 'Ce mail semble concerner l’un de ces dossiers :' : 'Ce mail semble concerner ce dossier :' }));
+    c.forEach(function (x) {
+      v.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort', texte: 'Le déposer dans « ' + x.d.intitule + ' »', onclick: function () {
+        ouvrir(x.d.id).then(function () { montrerDepot(prop); });
+      } })]));
+    });
+    v.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton', texte: 'Créer un nouveau dossier à partir de ce mail', onclick: function () { nouveauDossier(prop); } })]));
+  }).catch(alerte);
+}
+function resumeMail(prop) {
+  return el('div', { classe: 'lu' }, [
+    el('b', { texte: prop.mail.objet || '(sans objet)' }),
+    el('span', { texte: (prop.mail.expediteur || 'Expéditeur inconnu') + ' — ' + fr(prop.mail.date) }),
+    prop.mail.apercu ? el('div', { classe: 'apercu-mail', texte: prop.mail.apercu.slice(0, 220) + (prop.mail.apercu.length > 220 ? '…' : '') }) : null
+  ]);
+}
+/* une zone où glisser un mail, ou cliquer pour le choisir */
+function zoneDepot(texteZone, quandLu) {
+  var entree = el('input', { type: 'file', accept: '.msg,.eml,message/rfc822' });
+  var z = el('label', { classe: 'depot' }, [texteZone, entree]);
+  entree.addEventListener('change', function () { if (entree.files[0]) lireMail(entree.files[0]).then(quandLu).catch(alerte); entree.value = ''; });
+  z.addEventListener('dragover', function (e) { e.preventDefault(); e.stopPropagation(); z.classList.add('survol'); });
+  z.addEventListener('dragleave', function () { z.classList.remove('survol'); });
+  z.addEventListener('drop', function (e) { e.preventDefault(); e.stopPropagation(); z.classList.remove('survol'); cacherRideau(); var f = fichierDe(e); if (f) lireMail(f).then(quandLu).catch(alerte); });
+  return z;
+}
+/* dans un dossier ouvert : inscrire le mail, apprendre ses adresses, poser un rappel */
+function montrerDepot(prop) {
+  var cible = $('volet').querySelector('.bloc-depot'); if (!cible) return;
+  var id = etat.ouvert;
+  cible.textContent = '';
+  cible.appendChild(el('h3', { texte: 'Mail déposé' }));
+  cible.appendChild(resumeMail(prop));
+  var champ = el('input', { type: 'text', maxlength: '500', placeholder: 'Rappel à poser (facultatif)', 'aria-label': 'Texte du rappel' });
+  function envoyer(delai) {
+    if (delai && !champ.value.trim()) return champ.focus();
+    api('POST', { action: 'deposer', id: id, mail: prop.mail, adresses: prop.adresses, rappel: delai ? champ.value : '', delai: delai || 0 })
+      .then(function () { return ouvrir(id); }).then(charger).catch(alerte);
+  }
+  cible.appendChild(el('div', { classe: 'ligne' }, [champ]));
+  cible.appendChild(el('div', { classe: 'ligne' }, [
+    el('button', { classe: 'bouton fort petit', texte: 'Inscrire sans rappel', onclick: function () { envoyer(0); } }),
+    el('button', { classe: 'bouton petit', texte: 'Avec rappel dans 3 jours ouvrés', onclick: function () { envoyer(3); } }),
+    el('button', { classe: 'bouton petit', texte: 'Dans 7 jours ouvrés', onclick: function () { envoyer(7); } })
+  ]));
+  cible.appendChild(el('p', { classe: 'sous', texte: 'Le texte du mail n’est pas conservé : SUIVI garde l’objet, l’expéditeur, la date et les adresses. Le rangement dans le dossier Outlook se fera dès que la messagerie sera branchée.' }));
+  cible.scrollIntoView({ block: 'nearest' });
+}
+function nouveauDossier(prop) {
   etat.ouvert = null;
   var v = enteteVolet('Nouveau dossier');
-  v.appendChild(formulaire(null));
-  v.querySelector('input').focus();
+  if (prop) {
+    v.appendChild(el('p', { classe: 'sous', texte: 'Fiche préremplie à partir du mail ci-dessous : vérifiez les champs marqués d’un filet bleu.' }));
+    v.appendChild(resumeMail(prop));
+  } else {
+    v.appendChild(zoneDepot('Glissez ici un mail Outlook pour préremplir la fiche, ou cliquez pour le choisir', function (p) { nouveauDossier(p); }));
+  }
+  v.appendChild(formulaire(null, prop));
+  v.querySelector('input[name="intitule"]').focus();
+}
+
+/* glisser un mail n'importe où sur la page */
+var profondeur = 0;
+function cacherRideau() { profondeur = 0; $('rideau').classList.add('cache'); }
+function porteFichier(e) { var t = e.dataTransfer && e.dataTransfer.types; return t && Array.prototype.indexOf.call(t, 'Files') >= 0; }
+document.addEventListener('dragenter', function (e) { if ($('appli').classList.contains('cache') || !porteFichier(e)) return; profondeur++; if (!$('volet').querySelector('.depot')) $('rideau').classList.remove('cache'); });
+document.addEventListener('dragleave', function () { if (--profondeur <= 0) cacherRideau(); });
+document.addEventListener('dragover', function (e) { if (porteFichier(e)) e.preventDefault(); });
+document.addEventListener('drop', function (e) {
+  if (!porteFichier(e)) return;
+  e.preventDefault(); cacherRideau();
+  if ($('appli').classList.contains('cache')) return;
+  var f = fichierDe(e); if (!f) return;
+  if (etat.ouvert && !$('volet').classList.contains('cache')) lireMail(f).then(montrerDepot).catch(alerte);
+  else traiterMailGlisse(f);
 });
+$('deposer-mail').addEventListener('click', function () { $('choix-mail').click(); });
+$('choix-mail').addEventListener('change', function () { var f = $('choix-mail').files[0]; $('choix-mail').value = ''; if (f) traiterMailGlisse(f); });
 
 /* ---------- Signés et abandonnés ---------- */
 $('voir-classes').addEventListener('click', function () {
