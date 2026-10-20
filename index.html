@@ -186,9 +186,10 @@ dialog select option{background:var(--ardoise)}
 dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 
 /* dépôt de mail */
-.depot{border:1.5px dashed #2F6E86;border-radius:6px;padding:12px 14px;color:#9FC4D2;font-size:13.5px;text-align:center;cursor:pointer;background:rgba(109,213,220,.04)}
+.depot{border:1.5px dashed #2F6E86;border-radius:8px;padding:22px 16px;color:#9FC4D2;text-align:center;background:rgba(109,213,220,.04);margin-top:10px}
+.depot-titre{font-family:Georgia,serif;font-size:16px;color:#CDEFF4}
+.depot-aide{font-size:12.5px;color:var(--gris);margin-top:4px}
 .depot:hover,.depot.survol{border-color:var(--jaune);color:#FFE38A;background:rgba(255,201,0,.06)}
-.depot input{display:none}
 .lu{border-left:3px solid var(--cyan);background:rgba(109,213,220,.07);padding:10px 12px;margin-top:10px;font-size:13.5px}
 .lu b{display:block;color:#EDF6FA;font-weight:600;margin-bottom:2px}
 .lu .apercu-mail{color:var(--gris);margin-top:6px;font-style:italic}
@@ -237,7 +238,6 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
       <div class="marque"><div class="trait"></div><div><b>SUIVI</b><span class="mono" id="date-jour"></span></div></div>
       <label class="champ"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
         <input type="search" id="recherche" placeholder="Chercher un dossier, une partie…" aria-label="Chercher un dossier"></label>
-      <button class="bouton" id="deposer-mail" title="Ou glissez un mail n’importe où sur la page">Déposer un mail</button>
       <button class="bouton fort" id="nouveau">Nouveau dossier</button>
       <button class="bouton" id="verrouiller">Verrouiller</button>
     </div>
@@ -261,7 +261,6 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 </div>
 
 <div id="rideau" class="cache"><div>Déposez le mail : SUIVI prépare la fiche</div></div>
-<input type="file" id="choix-mail" accept=".msg,.eml,message/rfc822" class="cache">
 <div class="voile cache" id="voile"></div>
 <aside class="volet cache" id="volet" role="dialog" aria-modal="true"></aside>
 
@@ -753,7 +752,7 @@ function ouvrir(id) {
 
     var blocDepot = el('section', { classe: 'bloc bloc-depot' }, [
       el('h3', { texte: 'Déposer un mail' }),
-      zoneDepot('Glissez ici un mail Outlook concernant ce dossier, ou cliquez pour le choisir', function (p) { montrerDepot(p); })
+      zoneDepot('Déposez ici un mail Outlook concernant ce dossier', function (p) { montrerDepot(p); })
     ]);
     v.appendChild(blocDepot);
 
@@ -896,9 +895,10 @@ function resumeMail(prop) {
 }
 /* une zone où glisser un mail, ou cliquer pour le choisir */
 function zoneDepot(texteZone, quandLu) {
-  var entree = el('input', { type: 'file', accept: '.msg,.eml,message/rfc822' });
-  var z = el('label', { classe: 'depot' }, [texteZone, entree]);
-  entree.addEventListener('change', function () { if (entree.files[0]) lireMail(entree.files[0]).then(quandLu).catch(alerte); entree.value = ''; });
+  var z = el('div', { classe: 'depot', role: 'region', 'aria-label': 'Zone de dépôt d’un mail' }, [
+    el('div', { classe: 'depot-titre', texte: texteZone }),
+    el('div', { classe: 'depot-aide', texte: 'Faites glisser le mail depuis Outlook et lâchez-le ici.' })
+  ]);
   z.addEventListener('dragover', function (e) { e.preventDefault(); e.stopPropagation(); z.classList.add('survol'); });
   z.addEventListener('dragleave', function () { z.classList.remove('survol'); });
   z.addEventListener('drop', function (e) { e.preventDefault(); e.stopPropagation(); z.classList.remove('survol'); cacherRideau(); var f = fichierDe(e); if (f) lireMail(f).then(quandLu).catch(alerte); });
@@ -929,11 +929,10 @@ function montrerDepot(prop) {
 function nouveauDossier(prop) {
   etat.ouvert = null;
   var v = enteteVolet('Nouveau dossier');
+  v.appendChild(zoneDepot(prop ? 'Glissez un autre mail pour recommencer' : 'Déposez ici un mail Outlook pour préremplir la fiche', function (p) { nouveauDossier(p); }));
   if (prop) {
-    v.appendChild(el('p', { classe: 'sous', texte: 'Fiche préremplie à partir du mail ci-dessous : vérifiez les champs marqués d’un filet bleu.' }));
     v.appendChild(resumeMail(prop));
-  } else {
-    v.appendChild(zoneDepot('Glissez ici un mail Outlook pour préremplir la fiche, ou cliquez pour le choisir', function (p) { nouveauDossier(p); }));
+    v.appendChild(el('p', { classe: 'sous', texte: 'Fiche préremplie à partir de ce mail : vérifiez les champs marqués d’un filet bleu.' }));
   }
   v.appendChild(formulaire(null, prop));
   v.querySelector('input[name="intitule"]').focus();
@@ -951,11 +950,11 @@ document.addEventListener('drop', function (e) {
   e.preventDefault(); cacherRideau();
   if ($('appli').classList.contains('cache')) return;
   var f = fichierDe(e); if (!f) return;
-  if (etat.ouvert && !$('volet').classList.contains('cache')) lireMail(f).then(montrerDepot).catch(alerte);
+  var voletOuvert = !$('volet').classList.contains('cache');
+  if (etat.ouvert && voletOuvert) lireMail(f).then(montrerDepot).catch(alerte);
+  else if (voletOuvert && $('volet').querySelector('form.fiche')) lireMail(f).then(nouveauDossier).catch(alerte);
   else traiterMailGlisse(f);
 });
-$('deposer-mail').addEventListener('click', function () { $('choix-mail').click(); });
-$('choix-mail').addEventListener('change', function () { var f = $('choix-mail').files[0]; $('choix-mail').value = ''; if (f) traiterMailGlisse(f); });
 
 /* ---------- Signés et abandonnés ---------- */
 $('voir-classes').addEventListener('click', function () {
