@@ -87,6 +87,7 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .borne{font:600 8.5px/1 ui-monospace,'Cascadia Mono',Menlo,monospace;letter-spacing:.08em;opacity:.8;pointer-events:none}
 .titre-mat{font:400 12px/1 Georgia,serif;letter-spacing:.3em}
 .titre-arc{font-size:9px}
+.barre-nom{font-size:10px;letter-spacing:.05em}
 .rouge-fort{color:#FF8FAE;font-weight:600}
 .legende span{white-space:nowrap}
 @keyframes influx{from{stroke-dashoffset:var(--long,200)}to{stroke-dashoffset:0}}
@@ -381,7 +382,7 @@ function niveau(d) { return signatureDepassee(d) || echeanceDepassee(d) ? 2 : 0;
 function nomCourt(d) {
   var p1 = (d.partie1 || '').toUpperCase(), p2 = (d.partie2 || '').toUpperCase();
   var n = p2 ? p1 + ' / ' + p2 : p1;
-  return n.length > 22 ? n.slice(0, 21) + '…' : n;
+  return n.length > 20 ? n.slice(0, 19) + '…' : n;
 }
 function aTraiter() {
   var l = [];
@@ -536,27 +537,13 @@ function dessiner() {
       var r = d.signature_le ? R_SIGNES : rayonDe(x.part);
       var m = surCercle(ang, r), xm = m[0], ym = m[1];
       var niv = niveau(d), teinte = teinteDe(d, x), rappelDu = d.rappels_echus > 0;
-      ecussons.push({ x: xm, y: ym, m: RH + 5 });
       var g = sv('g', { 'class': 'module', tabindex: '0', role: 'button' });
       g.setAttribute('aria-label', d.intitule + ', ' + t.nom);
       g.dataset.id = d.id;
       var cherche = sansAccent([d.intitule, d.partie1, d.partie2, d.numero, d.nom_outlook, t.nom].join(' '));
       if (recherche && cherche.indexOf(recherche) < 0) g.classList.add('eteint');
       if (etat.choisi === d.id) g.classList.add('choisi');
-      /* le rayon : une barre à segments depuis l'anneau jusqu'au dossier */
-      var p0 = surCercle(ang, R_ANNEAU + 7), p1 = surCercle(ang, r - RH - 2);
-      var rayon = sv('line', { 'class': 'segment allumage rayon', x1: p0[0].toFixed(1), y1: p0[1].toFixed(1), x2: p1[0].toFixed(1), y2: p1[1].toFixed(1), stroke: teinte, 'stroke-width': '3', 'stroke-dasharray': '7 3', opacity: '.75' });
-      rayon.style.setProperty('--opf', '.75'); rayon.style.animationDelay = (80 + allumage * 35) + 'ms';
-      g.appendChild(rayon);
-      allumage++;
-      g.appendChild(sv('polygon', { 'class': 'cadre-survol', points: hexa(xm, ym, RH + 6), fill: 'none', stroke: teinte, 'stroke-width': '1.2' }));
-      g.appendChild(sv('polygon', { 'class': 'ecusson', points: hexa(xm, ym, RH), fill: '#0C2134', stroke: teinte, 'stroke-width': '1.6' }));
-      var ti = Math.round(RH * 1.05);
-      g.appendChild(sv('use', { href: '#' + (rappelDu ? 'i-cloche' : d.signature_le ? 'i-plume' : 'i-dossier'), x: (xm - ti / 2).toFixed(1), y: (ym - ti / 2).toFixed(1), width: ti, height: ti, color: teinte, 'pointer-events': 'none' }));
-      if (rappelDu || niv) g.appendChild(sv('circle', { 'class': 'pulse', cx: (xm + RH * 0.75).toFixed(1), cy: (ym - RH * 0.65).toFixed(1), r: '3.4', fill: niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' }));
-      var tx = sv('text', { 'class': 'etiquette', fill: niv ? ROUGE : '#BFD3DF' });
-      tx.textContent = nomCourt(d); g.appendChild(tx);
-      aPlacer.push({ tx: tx, x: xm, y: ym, a: ang, rh: RH });
+      aPlacer.push({ g: g, d: d, ang: ang, r: r, teinte: teinte, niv: niv, rappelDu: rappelDu, signe: !!d.signature_le, rang: allumage++ });
       g.addEventListener('mouseenter', function () { montrer(d); });
       g.addEventListener('focus', function () { montrer(d); });
       g.addEventListener('click', function () { ouvrir(d.id); });
@@ -578,38 +565,59 @@ function dessiner() {
     var tp = sv('textPath', { href: '#mat-' + i, startOffset: '50%', 'text-anchor': 'middle' });
     tp.textContent = tm.m.nom.toUpperCase(); t.appendChild(tp); carte.appendChild(t);
   });
-  placerEtiquettes(aPlacer, ecussons);
+  poserBarres(aPlacer, ecussons);
   cadrer(aPlacer);
   setTimeout(function () { carte.querySelectorAll('.segment.allumage').forEach(function (n) { n.classList.remove('allumage'); }); }, 1600);
   if (etat.choisi == null) panneauATraiter();
 }
 function cercleD(r) { return 'M' + (CX + r) + ',' + CY + ' a' + r + ',' + r + ' 0 1 1 -' + (2 * r) + ',0 a' + r + ',' + r + ' 0 1 1 ' + (2 * r) + ',0'; }
 
-/* Étiquettes : à côté de l'écusson, côté extérieur ; sinon dessous ou dessus ; sinon on la tait (le panneau la donne au survol) */
-var LARG_SIGNE = 7.6, HAUT_SIGNE = 10;
+/* Chaque dossier est une barre portant son nom, posée sur son rayon à la distance qui
+   correspond à son avancement. Si deux barres se chevauchent, la seconde glisse un peu
+   le long de son rayon ; un point marque alors sa position exacte. */
+var LARG_SIGNE = 6.5, HAUT_BARRE = 18;
 function seTouchent(A, B, m) { m = m || 3; return A.x0 < B.x1 + m && B.x0 < A.x1 + m && A.y0 < B.y1 + m && B.y0 < A.y1 + m; }
-function placerEtiquettes(liste, ecussons) {
-  var obstacles = ecussons.map(function (e) { return { x0: e.x - e.m, x1: e.x + e.m, y0: e.y - e.m, y1: e.y + e.m }; });
-  obstacles.push({ x0: CX - R_ANNEAU - 8, x1: CX + R_ANNEAU + 8, y0: CY - R_ANNEAU - 8, y1: CY + R_ANNEAU + 8 });
-  var posees = [];
+function poserBarres(liste, bornes) {
+  var obstacles = bornes.map(function (e) { return { x0: e.x - e.m, x1: e.x + e.m, y0: e.y - 6, y1: e.y + 6 }; });
+  var disque = R_ANNEAU + 8, posees = [];
   liste.forEach(function (e) {
-    var l = e.tx.textContent.length * LARG_SIGNE, cote = Math.cos(rad(e.a)) >= 0 ? 1 : -1;
-    var essais = [
-      { x: e.x + cote * (e.rh + 6), y: e.y + 4, ancre: cote > 0 ? 'start' : 'end' },
-      { x: e.x - cote * (e.rh + 6), y: e.y + 4, ancre: cote > 0 ? 'end' : 'start' },
-      { x: e.x, y: e.y + e.rh + 13, ancre: 'middle' },
-      { x: e.x, y: e.y - e.rh - 6, ancre: 'middle' }
-    ];
-    var choix = null;
-    for (var i = 0; i < essais.length && !choix; i++) {
-      var s = essais[i], x0 = s.ancre === 'start' ? s.x : s.ancre === 'end' ? s.x - l : s.x - l / 2;
-      var b = { x0: x0, x1: x0 + l, y0: s.y - HAUT_SIGNE, y1: s.y + 3 };
-      var gene = obstacles.some(function (o) { return !(Math.abs(o.x0 + o.x1 - 2 * e.x) < 1 && Math.abs(o.y0 + o.y1 - 2 * e.y) < 1) && seTouchent(b, o, 1); });
-      if (!gene && !posees.some(function (p) { return seTouchent(b, p, 3); })) choix = { s: s, b: b };
+    var nom = nomCourt(e.d), marque = e.rappelDu || e.signe;
+    var l = nom.length * LARG_SIGNE + 18 + (marque ? 16 : 0);
+    function boite(r) {
+      var p = surCercle(e.ang, r);
+      return { x0: p[0] - l / 2, x1: p[0] + l / 2, y0: p[1] - HAUT_BARRE / 2, y1: p[1] + HAUT_BARRE / 2, x: p[0], y: p[1], r: r };
     }
-    if (!choix) { e.tx.remove(); return; }
-    e.tx.setAttribute('x', choix.s.x.toFixed(1)); e.tx.setAttribute('y', choix.s.y.toFixed(1)); e.tx.setAttribute('text-anchor', choix.s.ancre);
-    e.boite = choix.b; posees.push(choix.b);
+    function dansAnneau(b) {
+      var dx = Math.max(Math.abs(b.x - CX) - l / 2, 0), dy = Math.max(Math.abs(b.y - CY) - HAUT_BARRE / 2, 0);
+      return Math.sqrt(dx * dx + dy * dy) < disque;
+    }
+    var choix = null, decal = [0, 18, 36, -18, 54, -36, 72, 90];
+    for (var i = 0; i < decal.length && !choix; i++) {
+      var b = boite(e.r + decal[i]);
+      if (dansAnneau(b)) continue;
+      if (!posees.some(function (o) { return seTouchent(b, o, 4); }) && !obstacles.some(function (o) { return seTouchent(b, o, 2); })) choix = b;
+    }
+    if (!choix) { choix = boite(e.r); while (dansAnneau(choix)) choix = boite(choix.r + 10); }
+    posees.push(choix); e.boite = choix;
+    var g = e.g, teinte = e.teinte;
+    /* le rayon : une barre à segments depuis l'anneau jusqu'au dossier */
+    var p0 = surCercle(e.ang, R_ANNEAU + 7), p1 = surCercle(e.ang, choix.r);
+    var rayon = sv('line', { 'class': 'segment allumage rayon', x1: p0[0].toFixed(1), y1: p0[1].toFixed(1), x2: p1[0].toFixed(1), y2: p1[1].toFixed(1), stroke: teinte, 'stroke-width': '3', 'stroke-dasharray': '7 3', opacity: '.75' });
+    rayon.style.setProperty('--opf', '.75'); rayon.style.animationDelay = (80 + e.rang * 35) + 'ms';
+    g.appendChild(rayon);
+    if (choix.r !== e.r) { var pv = surCercle(e.ang, e.r); g.appendChild(sv('circle', { cx: pv[0].toFixed(1), cy: pv[1].toFixed(1), r: '3', fill: teinte })); }
+    var x0 = choix.x0, y0 = choix.y0;
+    g.appendChild(sv('rect', { 'class': 'cadre-survol', x: (x0 - 4).toFixed(1), y: (y0 - 4).toFixed(1), width: (l + 8).toFixed(1), height: HAUT_BARRE + 8, rx: '5', fill: 'none', stroke: teinte, 'stroke-width': '1.2' }));
+    g.appendChild(sv('rect', { 'class': 'ecusson', x: x0.toFixed(1), y: y0.toFixed(1), width: l.toFixed(1), height: HAUT_BARRE, rx: '3', fill: '#0C2134', stroke: teinte, 'stroke-width': '1.4' }));
+    g.appendChild(sv('rect', { x: x0.toFixed(1), y: y0.toFixed(1), width: '5', height: HAUT_BARRE, rx: '2', fill: teinte, 'pointer-events': 'none' }));
+    var xt = x0 + 12;
+    if (marque) {
+      g.appendChild(sv('use', { href: '#' + (e.rappelDu ? 'i-cloche' : 'i-plume'), x: (x0 + 9).toFixed(1), y: (y0 + 3).toFixed(1), width: 12, height: 12, color: teinte, 'pointer-events': 'none' }));
+      xt += 16;
+    }
+    var tx = sv('text', { 'class': 'etiquette barre-nom', x: xt.toFixed(1), y: (y0 + 12.5).toFixed(1), fill: e.niv ? '#FF8FAE' : '#E1ECF2' });
+    tx.textContent = nom; g.appendChild(tx);
+    if (e.rappelDu || e.niv) g.appendChild(sv('circle', { 'class': 'pulse', cx: (x0 + l).toFixed(1), cy: y0.toFixed(1), r: '3.6', fill: e.niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' }));
   });
 }
 function cadrer(liste) {
