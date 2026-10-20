@@ -1,4 +1,0 @@
-{
-  "regions": ["cdg1"],
-  "functions": { "api/suivi.js": { "maxDuration": 15 } }
-}
