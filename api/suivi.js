@@ -43,6 +43,14 @@ function erreur(res, code, message) { res.status(code).json({ erreur: message })
 const libelle = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné' };
 const fr = s => s.split('-').reverse().join('/');
 
+// Un mail déposé : on n'en garde que l'objet, l'expéditeur et la date (jamais le texte)
+function ligneMail(m) {
+  const objet = texte(m && m.objet, 300) || '(sans objet)';
+  const de = texte(m && m.expediteur, 200);
+  const d = date(m && m.date);
+  return { texte: 'Mail déposé' + (de ? ' — de ' + de : '') + (d ? ', du ' + fr(d) : '') + ' : « ' + objet + ' »', jour: d };
+}
+
 async function evenement(sql, id, nature, txt, jour) {
   await sql`INSERT INTO suivi_evenement (dossier_id, nature, texte, date_evt) VALUES (${id}, ${nature}, ${txt}, ${jour})`;
 }
@@ -114,6 +122,7 @@ async function traiter(req, res) {
         VALUES (${champs.intitule}, ${champs.partie1}, ${champs.partie2}, ${champs.numero}, ${champs.adresses}, ${etape}, ${champs.signature_prevue}, ${champs.collaborateur}, ${champs.collab_relances})
         RETURNING *`;
       await evenement(sql, d.id, 'creation', 'Dossier créé (dossier Outlook : « ' + nomOutlook(d) + ' »)', jour);
+      if (b.mail) { const l = ligneMail(b.mail); await evenement(sql, d.id, 'note', l.texte, l.jour || jour); }
       return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) } });
     }
     const id = +b.id;
@@ -156,6 +165,25 @@ async function traiter(req, res) {
     if (!d) return erreur(res, 404, 'Dossier introuvable.');
     await evenement(sql, id, 'note', txt, le);
     return res.json({ ok: true });
+  }
+
+  if (action === 'deposer') {
+    const id = +b.id;
+    const [d] = await sql`SELECT id FROM suivi_dossier WHERE id = ${id}`;
+    if (!d) return erreur(res, 404, 'Dossier introuvable.');
+    const l = ligneMail(b.mail || {});
+    await evenement(sql, id, 'note', l.texte, l.jour || jour);
+    // SUIVI apprend les adresses du mail rattaché à la main
+    const nouvelles = adresses(b.adresses);
+    if (nouvelles.length) await sql`UPDATE suivi_dossier SET adresses = (SELECT array_agg(DISTINCT x) FROM unnest(adresses || ${nouvelles}::text[]) AS x), maj_le = now() WHERE id = ${id}`;
+    let rappel = null;
+    const txt = texte(b.rappel, 500), delai = +b.delai;
+    if (txt && (delai === 3 || delai === 7)) {
+      const echeance = cal.ajouterJoursOuvres(jour, delai);
+      [rappel] = await sql`INSERT INTO suivi_rappel (dossier_id, texte, echeance) VALUES (${id}, ${txt}, ${echeance}) RETURNING *`;
+      await evenement(sql, id, 'rappel', 'Rappel posé pour le ' + fr(echeance) + ' : ' + txt, jour);
+    }
+    return res.json({ ok: true, rappel: rappel ? versChaines(rappel) : null });
   }
 
   if (action === 'rappel') {
