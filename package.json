@@ -1,0 +1,8 @@
+{
+  "name": "suivi",
+  "private": true,
+  "description": "SUIVI — suivi des dossiers relié à la messagerie (FIDAL Notaires)",
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  }
+}
