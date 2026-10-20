@@ -1,10 +1,11 @@
 // SUIVI — fonction serveur unique (lot 1 : sans messagerie).
 // GET  /api/suivi?action=etat|liste|dossier&id=…
-// POST /api/suivi  { action: creer|modifier|etape|note|rappel|rappel_fait|rappel_reporter|supprimer, … }
+// POST /api/suivi  { action: creer|modifier|etape|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer, … }
 // Accès : en-tête x-suivi-code comparé à la variable SUIVI_CODE_ADMIN (JFD seul).
 'use strict';
 const crypto = require('crypto');
 const cal = require('../calendrier.js');
+const types = require('../types.js');
 
 let sqlInjecte = null; // pour les essais
 function db() {
@@ -16,6 +17,7 @@ function db() {
 const ETAPES = ['en_cours', 'avant_contrat', 'signe', 'abandonne'];
 const MOTIFS_ABANDON = ['Rétractation', 'Condition suspensive non réalisée', 'Refus de prêt', 'Vente à un tiers'];
 const GRACE_JOURS = 30;
+const LIBELLES_ECHEANCE = ['Levée des conditions suspensives', 'Obtention du prêt', 'Date butoir de réitération'];
 
 function codeValide(recu) {
   const attendu = process.env.SUIVI_CODE_ADMIN || '';
@@ -63,19 +65,28 @@ async function liste(sql, jour) {
     SELECT d.*,
       (SELECT count(*)::int FROM suivi_rappel r WHERE r.dossier_id = d.id AND r.fait_le IS NULL) AS rappels_ouverts,
       (SELECT count(*)::int FROM suivi_rappel r WHERE r.dossier_id = d.id AND r.fait_le IS NULL AND r.echeance <= ${jour}) AS rappels_echus,
-      (SELECT max(e.date_evt) FROM suivi_evenement e WHERE e.dossier_id = d.id AND e.nature <> 'creation') AS dernier_evt
+      (SELECT max(e.date_evt) FROM suivi_evenement e WHERE e.dossier_id = d.id AND e.nature <> 'creation') AS dernier_evt,
+      (SELECT min(x.echeance) FROM suivi_echeance x WHERE x.dossier_id = d.id AND x.faite_le IS NULL) AS prochaine_echeance
     FROM suivi_dossier d ORDER BY d.signature_prevue NULLS FIRST, d.id`;
   const rappels = await sql`
     SELECT r.id, r.dossier_id, r.texte, r.echeance, d.intitule
     FROM suivi_rappel r JOIN suivi_dossier d ON d.id = r.dossier_id
     WHERE r.fait_le IS NULL AND r.echeance <= ${jour} ORDER BY r.echeance, r.id`;
-  return { dossiers: dossiers.map(d => ({ ...versChaines(d), nom_outlook: nomOutlook(d) })), rappels_echus: rappels.map(versChaines) };
+  // échéances de l'acte à moins de 15 jours, ou dépassées
+  const horizon = cal.decaler(jour, 15);
+  const echeances = await sql`
+    SELECT x.id, x.dossier_id, x.libelle, x.echeance, d.intitule
+    FROM suivi_echeance x JOIN suivi_dossier d ON d.id = x.dossier_id
+    WHERE x.faite_le IS NULL AND x.echeance <= ${horizon} AND d.etape <> 'abandonne' AND d.signature_le IS NULL
+    ORDER BY x.echeance, x.id`;
+  return { dossiers: dossiers.map(d => ({ ...versChaines(d), nom_outlook: nomOutlook(d) })), rappels_echus: rappels.map(versChaines), echeances_proches: echeances.map(versChaines) };
 }
 
 // Les dates renvoyées par la base deviennent des chaînes AAAA-MM-JJ
 function versChaines(o) {
   const x = { ...o };
-  for (const k of ['signature_prevue', 'signature_le', 'classe_le', 'echeance', 'fait_le', 'date_evt', 'dernier_evt']) {
+  for (const k of ['signature_prevue', 'signature_le', 'classe_le', 'echeance', 'fait_le', 'faite_le', 'date_evt', 'dernier_evt',
+    'date_ouverture', 'date_deces', 'prochaine_echeance']) {
     if (x[k] instanceof Date) x[k] = x[k].toISOString().slice(0, 10);
   }
   return x;
@@ -95,7 +106,7 @@ async function traiter(req, res) {
   const action = req.method === 'GET' ? q.action : b.action;
 
   if (req.method === 'GET' && action === 'etat') {
-    return res.json({ aujourdhui: jour, jour: cal.infoJour(jour), couleur_du_temps: cal.couleurDuTemps(jour), motifs_abandon: MOTIFS_ABANDON });
+    return res.json({ aujourdhui: jour, jour: cal.infoJour(jour), couleur_du_temps: cal.couleurDuTemps(jour), motifs_abandon: MOTIFS_ABANDON, libelles_echeance: LIBELLES_ECHEANCE });
   }
   if (req.method === 'GET' && action === 'liste') return res.json({ aujourdhui: jour, ...(await liste(sql, jour)) });
   if (req.method === 'GET' && action === 'dossier') {
@@ -104,7 +115,8 @@ async function traiter(req, res) {
     if (!d) return erreur(res, 404, 'Dossier introuvable.');
     const evenements = await sql`SELECT * FROM suivi_evenement WHERE dossier_id = ${id} ORDER BY date_evt DESC, id DESC`;
     const rappels = await sql`SELECT * FROM suivi_rappel WHERE dossier_id = ${id} ORDER BY fait_le NULLS FIRST, echeance, id`;
-    return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) }, evenements: evenements.map(versChaines), rappels: rappels.map(versChaines) });
+    const echeances = await sql`SELECT * FROM suivi_echeance WHERE dossier_id = ${id} ORDER BY faite_le NULLS FIRST, echeance, id`;
+    return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) }, evenements: evenements.map(versChaines), rappels: rappels.map(versChaines), echeances: echeances.map(versChaines) });
   }
   if (req.method !== 'POST') return erreur(res, 405, 'Action inconnue.');
 
@@ -112,23 +124,35 @@ async function traiter(req, res) {
     const champs = {
       intitule: texte(b.intitule, 200), partie1: texte(b.partie1, 120), partie2: texte(b.partie2, 120),
       numero: texte(b.numero, 40), adresses: adresses(b.adresses), signature_prevue: date(b.signature_prevue),
-      collaborateur: (adresses([b.collaborateur])[0]) || null, collab_relances: !!b.collab_relances
+      collaborateur: (adresses([b.collaborateur])[0]) || null, collab_relances: !!b.collab_relances,
+      type_dossier: types.TYPES.some(t => t.id === b.type_dossier) ? b.type_dossier : null,
+      date_ouverture: date(b.date_ouverture) || jour, date_deces: date(b.date_deces), delai_jours: null
     };
     if (!champs.intitule || !champs.partie1) return erreur(res, 400, 'L’intitulé et le nom de la première partie sont obligatoires.');
+    if (!champs.type_dossier) return erreur(res, 400, 'Choisissez le type de dossier.');
+    const t = types.type(champs.type_dossier);
+    if (t.depuis !== 'deces') champs.date_deces = null;
+    if (t.ajustable) {
+      const n = Math.round(+b.delai_jours);
+      if (n >= 1 && n <= 1500 && n !== t.delai) champs.delai_jours = n;
+    }
     if (champs.collab_relances && !champs.collaborateur) champs.collab_relances = false;
     if (action === 'creer') {
       const etape = b.etape === 'avant_contrat' ? 'avant_contrat' : 'en_cours';
-      const [d] = await sql`INSERT INTO suivi_dossier (intitule, partie1, partie2, numero, adresses, etape, signature_prevue, collaborateur, collab_relances)
-        VALUES (${champs.intitule}, ${champs.partie1}, ${champs.partie2}, ${champs.numero}, ${champs.adresses}, ${etape}, ${champs.signature_prevue}, ${champs.collaborateur}, ${champs.collab_relances})
+      const [d] = await sql`INSERT INTO suivi_dossier (intitule, partie1, partie2, numero, adresses, etape, signature_prevue, collaborateur, collab_relances,
+          type_dossier, date_ouverture, date_deces, delai_jours)
+        VALUES (${champs.intitule}, ${champs.partie1}, ${champs.partie2}, ${champs.numero}, ${champs.adresses}, ${etape}, ${champs.signature_prevue}, ${champs.collaborateur}, ${champs.collab_relances},
+          ${champs.type_dossier}, ${champs.date_ouverture}, ${champs.date_deces}, ${champs.delai_jours})
         RETURNING *`;
-      await evenement(sql, d.id, 'creation', 'Dossier créé (dossier Outlook : « ' + nomOutlook(d) + ' »)', jour);
+      await evenement(sql, d.id, 'creation', 'Dossier créé — ' + t.nom + ', ouvert le ' + fr(champs.date_ouverture) + ' (dossier Outlook : « ' + nomOutlook(d) + ' »)', champs.date_ouverture);
       if (b.mail) { const l = ligneMail(b.mail); await evenement(sql, d.id, 'note', l.texte, l.jour || jour); }
       return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) } });
     }
     const id = +b.id;
     const [d] = await sql`UPDATE suivi_dossier SET intitule = ${champs.intitule}, partie1 = ${champs.partie1}, partie2 = ${champs.partie2},
         numero = ${champs.numero}, adresses = ${champs.adresses}, signature_prevue = ${champs.signature_prevue},
-        collaborateur = ${champs.collaborateur}, collab_relances = ${champs.collab_relances}, maj_le = now()
+        collaborateur = ${champs.collaborateur}, collab_relances = ${champs.collab_relances},
+        type_dossier = ${champs.type_dossier}, date_ouverture = ${champs.date_ouverture}, date_deces = ${champs.date_deces}, delai_jours = ${champs.delai_jours}, maj_le = now()
       WHERE id = ${id} RETURNING *`;
     if (!d) return erreur(res, 404, 'Dossier introuvable.');
     return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) } });
@@ -211,6 +235,33 @@ async function traiter(req, res) {
     await sql`UPDATE suivi_rappel SET echeance = ${echeance} WHERE id = ${rid}`;
     await evenement(sql, r.dossier_id, 'rappel', 'Rappel reporté au ' + fr(echeance) + ' : ' + r.texte, jour);
     return res.json({ echeance });
+  }
+
+  if (action === 'echeance') {
+    const id = +b.id, lib = texte(b.libelle, 200), le = date(b.date);
+    if (!lib) return erreur(res, 400, 'Indiquez l’objet de l’échéance.');
+    if (!le) return erreur(res, 400, 'La date de l’échéance est obligatoire.');
+    const [d] = await sql`SELECT id FROM suivi_dossier WHERE id = ${id}`;
+    if (!d) return erreur(res, 404, 'Dossier introuvable.');
+    const [x] = await sql`INSERT INTO suivi_echeance (dossier_id, libelle, echeance) VALUES (${id}, ${lib}, ${le}) RETURNING *`;
+    await evenement(sql, id, 'echeance', 'Échéance inscrite pour le ' + fr(le) + ' : ' + lib, jour);
+    return res.json({ echeance: versChaines(x) });
+  }
+
+  if (action === 'echeance_faite' || action === 'echeance_retirer') {
+    const xid = +b.echeance_id;
+    const [x] = await sql`SELECT * FROM suivi_echeance WHERE id = ${xid}`;
+    if (!x) return erreur(res, 404, 'Échéance introuvable.');
+    if (action === 'echeance_faite') {
+      if (x.faite_le) return erreur(res, 409, 'Échéance déjà marquée comme acquise.');
+      const le = date(b.date) || jour;
+      await sql`UPDATE suivi_echeance SET faite_le = ${le} WHERE id = ${xid}`;
+      await evenement(sql, x.dossier_id, 'echeance', 'Échéance acquise le ' + fr(le) + ' : ' + x.libelle, le);
+    } else {
+      await sql`DELETE FROM suivi_echeance WHERE id = ${xid}`;
+      await evenement(sql, x.dossier_id, 'echeance', 'Échéance retirée : ' + x.libelle + ' (prévue le ' + fr(versChaines(x).echeance) + ')', jour);
+    }
+    return res.json({ ok: true });
   }
 
   if (action === 'supprimer') {
