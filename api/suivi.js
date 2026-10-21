@@ -1,11 +1,12 @@
-// SUIVI — fonction serveur unique (lot 1 : sans messagerie).
-// GET  /api/suivi?action=etat|liste|dossier&id=…|collaborateurs
-// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|importer_collaborateurs|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer, … }
+// SUIVI — fonction serveur unique (lot 1, bloc « Étude », lot « pont 1 » : reprise des relevés de mails déposés dans le Drive).
+// GET  /api/suivi?action=etat|liste|dossier&id=…|collaborateurs|releves_repris|a_rattacher
+// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|importer_collaborateurs|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer|releves|mail_rattacher|mail_ignorer, … }
 // Accès : en-tête x-suivi-code comparé à la variable SUIVI_CODE_ADMIN (JFD seul).
 'use strict';
 const crypto = require('crypto');
 const cal = require('../calendrier.js');
 const types = require('../types.js');
+const pont = require('../releves.js');
 
 let sqlInjecte = null; // pour les essais
 function db() {
@@ -115,7 +116,18 @@ async function traiter(req, res) {
   if (req.method === 'GET' && action === 'etat') {
     return res.json({ aujourdhui: jour, jour: cal.infoJour(jour), couleur_du_temps: cal.couleurDuTemps(jour), motifs_abandon: MOTIFS_ABANDON, motifs_cloture: MOTIFS_CLOTURE, libelles_echeance: LIBELLES_ECHEANCE });
   }
-  if (req.method === 'GET' && action === 'liste') return res.json({ aujourdhui: jour, ...(await liste(sql, jour)) });
+  if (req.method === 'GET' && action === 'liste') {
+    const l = await liste(sql, jour);
+    let releves = null;
+    try { releves = await pont.etatReleves(sql); } catch (e) { releves = null; } // tables du pont pas encore créées
+    return res.json({ aujourdhui: jour, ...l, releves });
+  }
+  // Pont provisoire : identifiants Drive des fiches déjà reprises (14 derniers jours)
+  if (req.method === 'GET' && action === 'releves_repris') {
+    const r = await sql`SELECT drive_id FROM suivi_releve WHERE repris_le > now() - interval '14 days'`;
+    return res.json({ ids: r.map(x => x.drive_id) });
+  }
+  if (req.method === 'GET' && action === 'a_rattacher') return res.json({ mails: await pont.aRattacher(sql) });
   if (req.method === 'GET' && action === 'dossier') {
     const id = +q.id;
     const [d] = await sql`SELECT * FROM suivi_dossier WHERE id = ${id}`;
@@ -175,6 +187,8 @@ async function traiter(req, res) {
         RETURNING *`;
       await evenement(sql, d.id, 'creation', 'Dossier créé — ' + t.nom + ', ouvert le ' + fr(champs.date_ouverture) + ' (dossier Outlook : « ' + nomOutlook(d) + ' »)', champs.date_ouverture);
       if (b.mail) { const l = ligneMail(b.mail); await evenement(sql, d.id, 'note', l.texte, l.jour || jour); }
+      // dossier créé depuis « à rattacher » : le mail relevé y est rattaché (rattachement à la main, adresses apprises)
+      if (b.mail_outlook) await pont.rattacherMain(sql, texte(b.mail_outlook, 500), d.id);
       return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) } });
     }
     const id = +b.id;
@@ -317,6 +331,22 @@ async function traiter(req, res) {
       await evenement(sql, x.dossier_id, 'echeance', 'Échéance retirée : ' + x.libelle + ' (prévue le ' + fr(versChaines(x).echeance) + ')', jour);
     }
     return res.json({ ok: true });
+  }
+
+  // Pont provisoire : reprise d'un lot de fiches lues dans le Drive par la page
+  if (action === 'releves') {
+    const bilan = await pont.importer(sql, b.fiches, jour);
+    const etatR = await pont.etatReleves(sql);
+    await pont.signalerManques(sql, etatR);
+    return res.json({ bilan, releves: etatR });
+  }
+  if (action === 'mail_rattacher') {
+    const r = await pont.rattacherMain(sql, texte(b.mail_id, 500), +b.id);
+    return r.erreur ? erreur(res, 404, r.erreur) : res.json(r);
+  }
+  if (action === 'mail_ignorer') {
+    const r = await pont.ignorer(sql, texte(b.mail_id, 500));
+    return r.erreur ? erreur(res, 404, r.erreur) : res.json(r);
   }
 
   if (action === 'supprimer') {
