@@ -76,6 +76,22 @@
     if (x.reste <= 3) return 'proche';
     return null;
   }
+  /* Bloc « Étude » (21/10/2026) : adresses du cabinet, et adresses partagées qui y figurent
+     sans jamais recevoir de relance (comptabilité, formalités, accueil, listes de diffusion) */
+  var DOMAINE_ETUDE = '@fidal.notaires.fr', MOI = 'jean-francois.dumetz@fidal.notaires.fr';
+  function estEtude(a) { a = (a || '').toLowerCase(); return a.slice(-DOMAINE_ETUDE.length) === DOMAINE_ETUDE && a !== MOI; }
+  function estPartagee(a) {
+    var l = (a || '').toLowerCase().split('@')[0];
+    return /^(comptabilite|comptabilite\.client|formalites?|accueil|secretariat|contact)$/.test(l) || /^(collaborateurs?|associes?)\./.test(l);
+  }
+  function libellePartagee(a) {
+    var l = (a || '').toLowerCase().split('@')[0];
+    var noms = { 'comptabilite': 'Comptabilité', 'comptabilite.client': 'Comptabilité client', 'formalites': 'Formalités', 'formalite': 'Formalités', 'accueil': 'Accueil', 'secretariat': 'Secrétariat', 'contact': 'Contact' };
+    if (noms[l]) return noms[l];
+    var m = l.match(/^(collaborateurs?|associes?)\.(.+)$/);
+    if (m) return (m[1].indexOf('assoc') === 0 ? 'Associés' : 'Collaborateurs') + ' ' + m[2].charAt(0).toUpperCase() + m[2].slice(1) + ' (liste)';
+    return l;
+  }
   function delaiParDefaut(id) { var t = type(id); return t.mois ? null : t.delai; }
 
   /* Type deviné à partir de l'objet du mail (simple proposition, corrigeable) */
@@ -94,6 +110,7 @@
 
   var api = {
     MATIERES: MATIERES, TYPES: TYPES, DEFAUT: DEFAUT,
+    estEtude: estEtude, estPartagee: estPartagee, libellePartagee: libellePartagee, MOI: MOI,
     type: type, matiere: matiere, delais: delais, sablier: sablier, delaiParDefaut: delaiParDefaut,
     deviner: deviner, ajouterMois: ajouterMois, jours: jours
   };

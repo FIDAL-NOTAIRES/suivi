@@ -177,10 +177,11 @@
     var objet = nettoyerObjet(mail.objet);
     var p = parties(objet);
     var tous = [mail.de].concat(mail.a || [], mail.cc || []).filter(function (x) { return x && x.adresse; });
-    var collaborateur = null, adresses = [];
+    /* toutes les adresses de l'étude vont dans le bloc « Étude », les autres sont des correspondants */
+    var collaborateur = null, adresses = [], etude = [];
     tous.forEach(function (x) {
       if (x.adresse === moi) return;
-      if (!collaborateur && x.adresse.slice(-DOMAINE_CABINET.length) === DOMAINE_CABINET) { collaborateur = x.adresse; return; }
+      if (x.adresse.slice(-DOMAINE_CABINET.length) === DOMAINE_CABINET) { if (etude.indexOf(x.adresse) < 0) etude.push(x.adresse); if (!collaborateur) collaborateur = x.adresse; return; }
       if (adresses.indexOf(x.adresse) < 0) adresses.push(x.adresse);
     });
     var texte = (mail.texte || '').slice(0, 20000);
@@ -190,7 +191,7 @@
       partie1: p[0] || '', partie2: p[1] || '',
       numero: numero(mail.objet + '\n' + texte.slice(0, 2000)) || '',
       signature_prevue: signature(objet + ' ' + texte, aujourdhui) || '',
-      adresses: adresses, collaborateur: collaborateur || '',
+      adresses: adresses, collaborateur: collaborateur || '', etude: etude,
       type_dossier: devinerType(objet + ' ' + texte.slice(0, 1500)) || '',
       date_ouverture: dateMail,
       etape: /\b(promesse|compromis|avant[- ]contrat)\b/i.test(objet) && /\b(r[ée]it[ée]ration|acte authentique|acte de vente)\b/i.test(objet + ' ' + texte.slice(0, 3000)) ? 'avant_contrat' : 'en_cours',

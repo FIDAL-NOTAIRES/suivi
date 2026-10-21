@@ -107,6 +107,18 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .sablier:hover use{filter:brightness(1.3)}
 @keyframes clignote{0%,100%{opacity:1}50%{opacity:.15}}
 .sablier.clignote use{animation:clignote 1s steps(2,end) infinite}
+.etude{border:1px solid var(--bord);border-radius:6px;padding:8px 10px;margin-top:4px}
+.etude-ligne{display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.06);font-size:13.5px}
+.etude-ligne:first-child{border-top:0}
+.etude-ligne .qui{flex:1;min-width:0}
+.etude-ligne .qui b{font-weight:600;color:#EDF6FA}
+.etude-ligne .qui span{display:block;color:var(--gris);font-size:12px;overflow:hidden;text-overflow:ellipsis}
+.etude-ligne label.case{margin:0;white-space:nowrap}
+.etude-ligne .sans{color:var(--gris);font-size:12px;white-space:nowrap}
+.etude-ligne .retirer{border:0;background:none;color:var(--gris);font-size:18px;line-height:1;padding:0 4px}
+.etude-ajout{display:flex;gap:8px;align-items:center;margin-top:8px}
+.etude-ajout select{flex:1}
+.etude-vide{color:var(--gris);font-size:13px;padding:4px 0}
 .motif-requis{border:2px solid var(--orange)!important;box-shadow:0 0 0 3px rgba(255,152,45,.18)}
 .coeur-clic{cursor:pointer}
 .compte{font:400 46px/1 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;fill:#CDEFF4}
@@ -274,7 +286,7 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
       <span><i style="background:var(--rouge)"></i>Signature ou échéance dépassée</span>
       <span id="compte-dossiers"></span>
     </div>
-    <button class="lien" id="voir-classes">Signés, abandonnés et clos (<span id="n-classes">0</span>)</button>
+    <span><button class="lien" id="voir-collaborateurs">Collaborateurs (<span id="n-collab">0</span>)</button> · <button class="lien" id="voir-classes">Signés, abandonnés et clos (<span id="n-classes">0</span>)</button></span>
   </div></footer>
 </div>
 
@@ -316,7 +328,7 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 'use strict';
 var C = window.SuiviCalendrier, T = window.SuiviTypes;
 var CLE = 'suivi.code';
-var etat = { aujourdhui: C.aujourdhui(), dossiers: [], rappels: [], echeances: [], motifs: [], motifsCloture: [], libellesEcheance: [], ouvert: null, choisi: null, jour: null };
+var etat = { aujourdhui: C.aujourdhui(), collaborateurs: [], dossiers: [], rappels: [], echeances: [], motifs: [], motifsCloture: [], libellesEcheance: [], ouvert: null, choisi: null, jour: null };
 var LIBELLES = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné', formalites: 'Formalités', clos: 'Clore' };
 var ORANGE = '#FF982D', ROUGE = '#E0456E';
 var COULEURS_LITURGIQUES = { blanc: '#E9D99A', rouge: '#E0456E', vert: '#46B98A', violet: '#B07CCB' };
@@ -365,7 +377,18 @@ $('form-acces').addEventListener('submit', function (e) {
   demarrer().catch(function (err) { $('erreur-acces').textContent = err.message; });
 });
 $('verrouiller').addEventListener('click', verrouiller);
+function chargerCollaborateurs() {
+  return api('GET', { action: 'collaborateurs' }).then(function (j) { etat.collaborateurs = j.collaborateurs || []; $('n-collab').textContent = etat.collaborateurs.length; })
+    .catch(function () { etat.collaborateurs = []; });
+}
+/* nom affiché d'une adresse de l'étude */
+function nomEtude(a) {
+  if (T.estPartagee(a)) return T.libellePartagee(a);
+  var c = etat.collaborateurs.filter(function (x) { return x.adresse === a; })[0];
+  return c ? ((c.prenom ? c.prenom + ' ' : '') + c.nom) : a;
+}
 function demarrer() {
+  chargerCollaborateurs();
   return api('GET', { action: 'etat' }).then(function (j) {
     etat.aujourdhui = j.aujourdhui; etat.motifs = j.motifs_abandon; etat.motifsCloture = j.motifs_cloture || ['Simple demande de renseignement']; etat.libellesEcheance = j.libelles_echeance || []; etat.jour = j;
     $('ecran-acces').classList.add('cache'); $('appli').classList.remove('cache');
@@ -738,6 +761,7 @@ function montrer(d) {
     if (d.prochaine_echeance) p.appendChild(el('p', { classe: echeanceDepassee(d) ? 'rouge' : '', texte: 'Prochaine échéance de l’acte : ' + fr(d.prochaine_echeance) + (echeanceDepassee(d) ? ' — dépassée' : '') }));
   }
   p.appendChild(el('p', { texte: '0 relance — ' + (d.dernier_evt ? 'dernier échange le ' + fr(d.dernier_evt) : 'aucun échange') }));
+  if ((d.etude || []).length) p.appendChild(el('p', { texte: 'Étude : ' + d.etude.filter(function (a) { return !T.estPartagee(a); }).map(function (a) { return nomEtude(a) + ((d.etude_relances || []).indexOf(a) >= 0 ? ' (relances)' : ''); }).join(', ') }));
   if (d.rappels_echus) p.appendChild(el('p', { classe: 'alerte', texte: d.rappels_echus + ' rappel' + (d.rappels_echus > 1 ? 's' : '') + ' dû' + (d.rappels_echus > 1 ? 's' : '') }));
   else if (d.rappels_ouverts) p.appendChild(el('p', { texte: d.rappels_ouverts + ' rappel' + (d.rappels_ouverts > 1 ? 's' : '') + ' en attente' }));
   var sab = T.sablier(d, etat.aujourdhui);
@@ -935,7 +959,7 @@ function echeanceAction(action, xid, id) {
 function formulaire(d, prop) {
   var nouveau = !d; d = d || {};
   if (prop) d = { intitule: prop.intitule, partie1: prop.partie1, partie2: prop.partie2, numero: prop.numero, signature_prevue: prop.signature_prevue,
-    adresses: prop.adresses, collaborateur: prop.collaborateur, collab_relances: false, etape: prop.etape,
+    adresses: prop.adresses, etude: prop.etude || (prop.collaborateur ? [prop.collaborateur] : []), etude_relances: [], etape: prop.etape,
     type_dossier: prop.type_dossier, date_ouverture: prop.date_ouverture };
   var f = el('form', { classe: 'fiche' });
   function c(nom) { return f.querySelector('[name="' + nom + '"]'); }
@@ -990,9 +1014,45 @@ function formulaire(d, prop) {
   var adr = el('textarea', { name: 'adresses', placeholder: 'Une adresse par ligne' }); adr.value = (d.adresses || []).join('\n');
   if (prop && adr.value) adr.classList.add('prerempli');
   f.appendChild(el('label', {}, ['Adresses des correspondants déjà connues', adr]));
-  f.appendChild(champ('Collaborateur référent (adresse)', 'collaborateur', 'email', d.collaborateur, { maxlength: '120' }));
-  var cb = el('input', { type: 'checkbox', name: 'collab_relances' }); cb.checked = !!d.collab_relances;
-  f.appendChild(el('label', { classe: 'case' }, [cb, 'Lui envoyer les relances et rappels de ce dossier']));
+  /* bloc « Étude » : les adresses du cabinet, une case par collaborateur pour les relances */
+  var etudeL = (d.etude || []).slice(), relancesL = (d.etude_relances || []).slice();
+  var blocEtude = el('div', { classe: 'etude' + (prop && etudeL.length ? ' prerempli' : '') });
+  f.appendChild(el('label', {}, ['Étude — cochez qui reçoit les relances de ce dossier']));
+  f.appendChild(blocEtude);
+  function dessinerEtude() {
+    blocEtude.textContent = '';
+    if (!etudeL.length) blocEtude.appendChild(el('div', { classe: 'etude-vide', texte: 'Aucun collaborateur pour ce dossier.' }));
+    etudeL.forEach(function (a) {
+      var partagee = T.estPartagee(a);
+      var cb = el('input', { type: 'checkbox' }); cb.checked = relancesL.indexOf(a) >= 0;
+      cb.addEventListener('change', function () { if (cb.checked) { if (relancesL.indexOf(a) < 0) relancesL.push(a); } else relancesL = relancesL.filter(function (x) { return x !== a; }); });
+      blocEtude.appendChild(el('div', { classe: 'etude-ligne' }, [
+        el('div', { classe: 'qui' }, [el('b', { texte: nomEtude(a) }), el('span', { texte: a })]),
+        partagee ? el('span', { classe: 'sans', texte: 'adresse partagée, sans relance' }) : el('label', { classe: 'case' }, [cb, 'Relances']),
+        el('button', { type: 'button', classe: 'retirer', title: 'Retirer de ce dossier', 'aria-label': 'Retirer ' + a, texte: '×', onclick: function () {
+          etudeL = etudeL.filter(function (x) { return x !== a; }); relancesL = relancesL.filter(function (x) { return x !== a; }); dessinerEtude();
+        } })
+      ]));
+    });
+    // bouton « + » : tous les collaborateurs du cabinet, par ordre alphabétique du nom de famille
+    var libres = etat.collaborateurs.filter(function (x) { return etudeL.indexOf(x.adresse) < 0; })
+      .sort(function (x, y) { return (x.nom || '').localeCompare(y.nom || '', 'fr', { sensitivity: 'base' }) || (x.prenom || '').localeCompare(y.prenom || '', 'fr'); });
+    var choix = el('select', { 'aria-label': 'Ajouter un collaborateur' }, [el('option', { value: '', texte: libres.length ? '— ajouter un collaborateur —' : 'Liste des collaborateurs à importer (pied de page)' })]
+      .concat(libres.map(function (x) { return el('option', { value: x.adresse, texte: x.nom + (x.prenom ? ' ' + x.prenom : '') + (x.site ? ' — ' + x.site : '') }); })));
+    if (!libres.length) choix.disabled = true;
+    var plus = el('button', { type: 'button', classe: 'bouton petit', texte: '+', title: 'Ajouter ce collaborateur', onclick: function () {
+      if (!choix.value) return choix.focus();
+      etudeL.push(choix.value); dessinerEtude();
+    } });
+    blocEtude.appendChild(el('div', { classe: 'etude-ajout' }, [choix, plus]));
+  }
+  dessinerEtude();
+  /* une adresse de l'étude tapée parmi les correspondants passe dans le bloc « Étude » */
+  adr.addEventListener('change', function () {
+    var lignes = adr.value.split(/[\s,;]+/).filter(Boolean), reste = [];
+    lignes.forEach(function (a) { a = a.toLowerCase(); if (T.estEtude(a)) { if (etudeL.indexOf(a) < 0) etudeL.push(a); } else if (a !== T.MOI) reste.push(a); });
+    if (reste.length !== lignes.length) { adr.value = reste.join('\n'); dessinerEtude(); }
+  });
   var apercu = el('div', { classe: 'apercu' });
   function majApercu() {
     var p1 = c('partie1').value.trim().toUpperCase(), p2 = c('partie2').value.trim().toUpperCase(), n = c('numero').value.trim();
@@ -1005,7 +1065,7 @@ function formulaire(d, prop) {
     e.preventDefault(); err.textContent = '';
     var donnees = { action: nouveau ? 'creer' : 'modifier', id: d.id, intitule: c('intitule').value, partie1: c('partie1').value, partie2: c('partie2').value,
       numero: c('numero').value, signature_prevue: c('signature_prevue').value || null, adresses: c('adresses').value,
-      collaborateur: c('collaborateur').value, collab_relances: c('collab_relances').checked,
+      etude: etudeL, relances: relancesL,
       type_dossier: c('type_dossier').value, date_ouverture: c('date_ouverture').value, date_deces: c('date_deces').value || null, delai_jours: c('delai_jours').value || null };
     if (nouveau) donnees.etape = c('etape').value;
     if (prop) donnees.mail = prop.mail;
@@ -1044,7 +1104,7 @@ function fichierDe(e) {
 /* dossiers qui semblent concernés : une adresse déjà connue, ou les noms des parties dans l'objet */
 function candidats(prop) {
   var objet = sansAccent(prop.mail.objet);
-  var adr = prop.adresses.concat(prop.collaborateur ? [prop.collaborateur] : []);
+  var adr = prop.adresses.concat(prop.etude || []);
   return etat.dossiers.filter(actif).map(function (d) {
     var score = 0;
     (d.adresses || []).forEach(function (a) { if (adr.indexOf(a) >= 0) score += 1; });
@@ -1096,7 +1156,7 @@ function montrerDepot(prop) {
   var champ = el('input', { type: 'text', maxlength: '500', placeholder: 'Rappel à poser (facultatif)', 'aria-label': 'Texte du rappel' });
   function envoyer(delai) {
     if (delai && !champ.value.trim()) return champ.focus();
-    api('POST', { action: 'deposer', id: id, mail: prop.mail, adresses: prop.adresses, rappel: delai ? champ.value : '', delai: delai || 0 })
+    api('POST', { action: 'deposer', id: id, mail: prop.mail, adresses: prop.adresses.concat(prop.etude || []), rappel: delai ? champ.value : '', delai: delai || 0 })
       .then(function () { return ouvrir(id); }).then(charger).catch(alerte);
   }
   cible.appendChild(el('div', { classe: 'ligne' }, [champ]));
@@ -1182,6 +1242,68 @@ function changerEtape(d, cible) {
   };
   dlg.showModal();
 }
+
+/* ---------- Collaborateurs du cabinet : import du fichier Excel (rien ne passe par GitHub) ---------- */
+var chargementXlsx = null;
+function lecteurXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  if (!chargementXlsx) chargementXlsx = new Promise(function (ok, ko) {
+    var sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = ok; sc.onerror = function () { chargementXlsx = null; ko(new Error('Lecteur Excel indisponible : réessayez.')); };
+    document.head.appendChild(sc);
+  });
+  return chargementXlsx;
+}
+/* lit la feuille « Collaborateurs » (ou la première) : colonnes nom, prénom, mail, site */
+function lireCollaborateurs(buf) {
+  var wb = XLSX.read(buf, { type: 'array' });
+  var nomF = wb.SheetNames.filter(function (n) { return sansAccent(n) === 'collaborateurs'; })[0] || wb.SheetNames[0];
+  var lignes = XLSX.utils.sheet_to_json(wb.Sheets[nomF], { header: 1, defval: '' });
+  var t = -1, col = {};
+  for (var i = 0; i < Math.min(lignes.length, 10) && t < 0; i++) {
+    var l = lignes[i].map(function (x) { return sansAccent(String(x)).trim(); });
+    if (l.indexOf('nom') >= 0 && (l.indexOf('mail') >= 0 || l.indexOf('email') >= 0 || l.indexOf('adresse mail') >= 0)) {
+      t = i; l.forEach(function (x, k) { if (!(x in col)) col[x] = k; });
+    }
+  }
+  if (t < 0) throw new Error('Colonnes « nom » et « mail » introuvables dans le fichier.');
+  var cMail = col.mail !== undefined ? col.mail : col.email !== undefined ? col.email : col['adresse mail'];
+  return lignes.slice(t + 1).map(function (l) {
+    return { nom: String(l[col.nom] || '').trim(), prenom: String(l[col.prenom] || '').trim(), adresse: String(l[cMail] || '').trim().toLowerCase(), site: String(col.site !== undefined ? l[col.site] : '').trim() };
+  }).filter(function (x) { return x.nom && /@fidal\.notaires\.fr$/.test(x.adresse); });
+}
+function voletCollaborateurs() {
+  var v = enteteVolet('Collaborateurs du cabinet');
+  v.appendChild(el('p', { classe: 'sous', texte: 'Cette liste alimente le bouton « + » du bloc « Étude ». Elle est enregistrée dans la base de SUIVI, jamais dans GitHub. Les adresses partagées (comptabilité, formalités, accueil, listes) restent sans relance.' }));
+  var resultat = el('div', { classe: 'sous' });
+  function importer(fichier) {
+    resultat.textContent = 'Lecture du fichier…';
+    Promise.all([lecteurXlsx(), fichier.arrayBuffer()]).then(function (r) {
+      var liste = lireCollaborateurs(new Uint8Array(r[1]));
+      if (!window.confirm('Remplacer la liste actuelle par les ' + liste.length + ' collaborateurs lus dans « ' + fichier.name + ' » ?')) { resultat.textContent = ''; return; }
+      return api('POST', { action: 'importer_collaborateurs', liste: liste }).then(function (j) {
+        return chargerCollaborateurs().then(function () { voletCollaborateurs(); $('volet').querySelector('.resultat-import').textContent = j.importes + ' collaborateurs importés.'; });
+      });
+    }).catch(function (e) { resultat.textContent = e.message; });
+  }
+  var entree = el('input', { type: 'file', accept: '.xlsx,.xls', classe: 'cache' });
+  entree.addEventListener('change', function () { if (entree.files[0]) importer(entree.files[0]); entree.value = ''; });
+  var zone = el('div', { classe: 'depot' }, [el('div', { classe: 'depot-titre', texte: 'Déposez ici Liste_collaborateurs.xlsx' }),
+    el('div', { classe: 'depot-aide' }, ['ou ', el('button', { type: 'button', classe: 'lien', texte: 'choisissez le fichier', onclick: function () { entree.click(); } }), ' — il remplace la liste actuelle.'])]);
+  zone.addEventListener('dragover', function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.add('survol'); });
+  zone.addEventListener('dragleave', function () { zone.classList.remove('survol'); });
+  zone.addEventListener('drop', function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.remove('survol'); cacherRideau(); var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) importer(f); });
+  resultat.classList.add('resultat-import');
+  v.appendChild(zone); v.appendChild(entree); v.appendChild(resultat);
+  var tb = el('tbody');
+  etat.collaborateurs.slice().sort(function (a, b) { return a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }); }).forEach(function (x) {
+    tb.appendChild(el('tr', {}, [el('td', { texte: x.nom }), el('td', { texte: x.prenom || '' }), el('td', { texte: x.site || '' }),
+      el('td', { texte: x.adresse + (T.estPartagee(x.adresse) ? ' (partagée)' : '') })]));
+  });
+  if (etat.collaborateurs.length) v.appendChild(el('table', { classe: 'classes' }, [el('thead', {}, [el('tr', {}, [el('th', { texte: 'Nom' }), el('th', { texte: 'Prénom' }), el('th', { texte: 'Site' }), el('th', { texte: 'Adresse' })])]), tb]));
+  else v.appendChild(el('p', { texte: 'Aucun collaborateur importé pour l’instant.' }));
+}
+$('voir-collaborateurs').addEventListener('click', voletCollaborateurs);
 
 /* ---------- Sablier : réajuster la date limite, motif obligatoire ---------- */
 function reporterDelai(d) {
