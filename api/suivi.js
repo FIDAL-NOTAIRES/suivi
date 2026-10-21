@@ -1,6 +1,6 @@
 // SUIVI — fonction serveur unique (lot 1 : sans messagerie).
-// GET  /api/suivi?action=etat|liste|dossier&id=…
-// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer, … }
+// GET  /api/suivi?action=etat|liste|dossier&id=…|collaborateurs
+// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|importer_collaborateurs|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer, … }
 // Accès : en-tête x-suivi-code comparé à la variable SUIVI_CODE_ADMIN (JFD seul).
 'use strict';
 const crypto = require('crypto');
@@ -37,6 +37,12 @@ function adresses(v) {
   const liste = Array.isArray(v) ? v : String(v || '').split(/[\s,;]+/);
   const ok = liste.map(x => String(x).trim().toLowerCase()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
   return [...new Set(ok)].slice(0, 50);
+}
+// Répartition des adresses : correspondants d'un côté, étude de l'autre (21/10/2026)
+function repartir(liste) {
+  const tiers = [], etude = [];
+  adresses(liste).forEach(a => { if (types.estEtude(a)) etude.push(a); else if (a !== types.MOI) tiers.push(a); });
+  return { tiers, etude };
 }
 function nomOutlook(d) {
   const p1 = (d.partie1 || '').toUpperCase(), p2 = (d.partie2 || '').toUpperCase();
@@ -119,13 +125,36 @@ async function traiter(req, res) {
     const echeances = await sql`SELECT * FROM suivi_echeance WHERE dossier_id = ${id} ORDER BY faite_le NULLS FIRST, echeance, id`;
     return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) }, evenements: evenements.map(versChaines), rappels: rappels.map(versChaines), echeances: echeances.map(versChaines) });
   }
+  if (req.method === 'GET' && action === 'collaborateurs') {
+    const liste = await sql`SELECT adresse, nom, prenom, site, importe_le FROM suivi_collaborateur ORDER BY nom, prenom`;
+    return res.json({ collaborateurs: liste });
+  }
   if (req.method !== 'POST') return erreur(res, 405, 'Action inconnue.');
 
+  // Import de la liste des collaborateurs (fichier Excel lu dans le navigateur) : remplace la liste
+  if (action === 'importer_collaborateurs') {
+    const vus = new Set(), A = [], N = [], P = [], S = [];
+    (Array.isArray(b.liste) ? b.liste : []).slice(0, 1000).forEach(x => {
+      const a = (adresses([x && x.adresse])[0]) || '', nom = texte(x && x.nom, 80);
+      if (!nom || !a.endsWith('@fidal.notaires.fr') || vus.has(a)) return;
+      vus.add(a); A.push(a); N.push(nom); P.push(texte(x.prenom, 80)); S.push(texte(x.site, 60));
+    });
+    if (!A.length) return erreur(res, 400, 'Aucun collaborateur lisible dans le fichier (colonnes « nom » et « mail » attendues).');
+    await sql`DELETE FROM suivi_collaborateur`;
+    await sql`INSERT INTO suivi_collaborateur (adresse, nom, prenom, site) SELECT * FROM unnest(${A}::text[], ${N}::text[], ${P}::text[], ${S}::text[])`;
+    return res.json({ importes: A.length });
+  }
+
+
   if (action === 'creer' || action === 'modifier') {
+    const r1 = repartir(b.adresses), r2 = repartir(Array.isArray(b.etude) ? b.etude : []);
+    const etude = [...new Set(r1.etude.concat(r2.etude))];
+    const relances = adresses(Array.isArray(b.relances) ? b.relances : []).filter(a => etude.includes(a) && !types.estPartagee(a));
     const champs = {
       intitule: texte(b.intitule, 200), partie1: texte(b.partie1, 120), partie2: texte(b.partie2, 120),
-      numero: texte(b.numero, 40), adresses: adresses(b.adresses), signature_prevue: date(b.signature_prevue),
-      collaborateur: (adresses([b.collaborateur])[0]) || null, collab_relances: !!b.collab_relances,
+      numero: texte(b.numero, 40), adresses: r1.tiers.concat(r2.tiers.filter(a => !r1.tiers.includes(a))), signature_prevue: date(b.signature_prevue),
+      etude, etude_relances: relances,
+      collaborateur: null, collab_relances: false,   /* remplacés par le bloc « Étude » */
       type_dossier: types.TYPES.some(t => t.id === b.type_dossier) ? b.type_dossier : null,
       date_ouverture: date(b.date_ouverture) || jour, date_deces: date(b.date_deces), delai_jours: null
     };
@@ -137,13 +166,12 @@ async function traiter(req, res) {
       const n = Math.round(+b.delai_jours);
       if (n >= 1 && n <= 1500 && n !== t.delai) champs.delai_jours = n;
     }
-    if (champs.collab_relances && !champs.collaborateur) champs.collab_relances = false;
     if (action === 'creer') {
       const etape = b.etape === 'avant_contrat' ? 'avant_contrat' : 'en_cours';
       const [d] = await sql`INSERT INTO suivi_dossier (intitule, partie1, partie2, numero, adresses, etape, signature_prevue, collaborateur, collab_relances,
-          type_dossier, date_ouverture, date_deces, delai_jours)
+          type_dossier, date_ouverture, date_deces, delai_jours, etude, etude_relances)
         VALUES (${champs.intitule}, ${champs.partie1}, ${champs.partie2}, ${champs.numero}, ${champs.adresses}, ${etape}, ${champs.signature_prevue}, ${champs.collaborateur}, ${champs.collab_relances},
-          ${champs.type_dossier}, ${champs.date_ouverture}, ${champs.date_deces}, ${champs.delai_jours})
+          ${champs.type_dossier}, ${champs.date_ouverture}, ${champs.date_deces}, ${champs.delai_jours}, ${champs.etude}, ${champs.etude_relances})
         RETURNING *`;
       await evenement(sql, d.id, 'creation', 'Dossier créé — ' + t.nom + ', ouvert le ' + fr(champs.date_ouverture) + ' (dossier Outlook : « ' + nomOutlook(d) + ' »)', champs.date_ouverture);
       if (b.mail) { const l = ligneMail(b.mail); await evenement(sql, d.id, 'note', l.texte, l.jour || jour); }
@@ -153,7 +181,8 @@ async function traiter(req, res) {
     const [d] = await sql`UPDATE suivi_dossier SET intitule = ${champs.intitule}, partie1 = ${champs.partie1}, partie2 = ${champs.partie2},
         numero = ${champs.numero}, adresses = ${champs.adresses}, signature_prevue = ${champs.signature_prevue},
         collaborateur = ${champs.collaborateur}, collab_relances = ${champs.collab_relances},
-        type_dossier = ${champs.type_dossier}, date_ouverture = ${champs.date_ouverture}, date_deces = ${champs.date_deces}, delai_jours = ${champs.delai_jours}, maj_le = now()
+        type_dossier = ${champs.type_dossier}, date_ouverture = ${champs.date_ouverture}, date_deces = ${champs.date_deces}, delai_jours = ${champs.delai_jours},
+        etude = ${champs.etude}, etude_relances = ${champs.etude_relances}, maj_le = now()
       WHERE id = ${id} RETURNING *`;
     if (!d) return erreur(res, 404, 'Dossier introuvable.');
     return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) } });
@@ -223,8 +252,9 @@ async function traiter(req, res) {
     const l = ligneMail(b.mail || {});
     await evenement(sql, id, 'note', l.texte, l.jour || jour);
     // SUIVI apprend les adresses du mail rattaché à la main
-    const nouvelles = adresses(b.adresses);
-    if (nouvelles.length) await sql`UPDATE suivi_dossier SET adresses = (SELECT array_agg(DISTINCT x) FROM unnest(adresses || ${nouvelles}::text[]) AS x), maj_le = now() WHERE id = ${id}`;
+    const nouv = repartir(b.adresses);
+    if (nouv.tiers.length) await sql`UPDATE suivi_dossier SET adresses = (SELECT array_agg(DISTINCT x) FROM unnest(adresses || ${nouv.tiers}::text[]) AS x), maj_le = now() WHERE id = ${id}`;
+    if (nouv.etude.length) await sql`UPDATE suivi_dossier SET etude = (SELECT array_agg(DISTINCT x) FROM unnest(etude || ${nouv.etude}::text[]) AS x), maj_le = now() WHERE id = ${id}`;
     let rappel = null;
     const txt = texte(b.rappel, 500), delai = +b.delai;
     if (txt && (delai === 3 || delai === 7)) {
