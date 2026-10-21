@@ -102,6 +102,12 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .reacteur{animation:bat 3.2s ease-in-out infinite}
 .halo-coeur{animation:respire 6s ease-in-out infinite}
 .pulse{animation:alerte 1.8s ease-in-out infinite}
+.sablier{cursor:pointer}
+.sablier .zone-sab{fill:transparent}
+.sablier:hover use{filter:brightness(1.3)}
+@keyframes clignote{0%,100%{opacity:1}50%{opacity:.15}}
+.sablier.clignote use{animation:clignote 1s steps(2,end) infinite}
+.motif-requis{border:2px solid var(--orange)!important;box-shadow:0 0 0 3px rgba(255,152,45,.18)}
 .coeur-clic{cursor:pointer}
 .compte{font:400 46px/1 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;fill:#CDEFF4}
 .compte.chaud{fill:#FFB667}
@@ -219,7 +225,7 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
   .ciel{display:none} .repli{display:block} .barre{flex-wrap:wrap} .champ{width:100%;margin-left:0}
 }
 @media (prefers-reduced-motion:reduce){
-  .influx{display:none} .gire,.gire-inv,.reacteur,.halo-coeur,.pulse,.segment.allumage{animation:none}
+  .influx{display:none} .gire,.gire-inv,.reacteur,.halo-coeur,.pulse,.segment.allumage{animation:none} .sablier.clignote use{animation:none;opacity:1}
 }
 </style>
 </head>
@@ -228,6 +234,7 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <symbol id="i-dossier" viewBox="0 0 24 24"><path class="ico" d="M3 7h6l2 2h10v10H3z"/><path class="ico" d="M3 7V5h6"/></symbol>
   <symbol id="i-cloche" viewBox="0 0 24 24"><path class="ico" d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4z"/><path class="ico" d="M10 21h4"/></symbol>
+  <symbol id="i-sablier" viewBox="0 0 24 24"><path class="ico" d="M6 3h12M6 21h12M7 3c0 5 10 6 10 9s-10 4-10 9M17 3c0 5-10 6-10 9s10 4 10 9"/><path class="ico" d="M10 18h4"/></symbol>
   <symbol id="i-plume" viewBox="0 0 24 24"><path class="ico" d="M20 4C10 5 6 10 5 19l3-3c7 0 11-4 12-12z"/><path class="ico" d="M4 20l6-6"/></symbol>
 </defs></svg>
 
@@ -263,16 +270,31 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
     <div class="legende">
       <span title="Chaque dossier s’éloigne du centre au fil du temps ; le bord de son secteur marque la durée moyenne de son type">Bord = délai moyen du type</span>
       <span><i style="background:var(--orange)"></i>Délai proche ou dépassé</span>
+      <span><svg width="11" height="11" style="vertical-align:-1px;margin-right:5px;color:#FFB667" aria-hidden="true"><use href="#i-sablier"/></svg>Sablier : date limite dans 3 jours ; clignotant : dépassée</span>
       <span><i style="background:var(--rouge)"></i>Signature ou échéance dépassée</span>
       <span id="compte-dossiers"></span>
     </div>
-    <button class="lien" id="voir-classes">Signés et abandonnés (<span id="n-classes">0</span>)</button>
+    <button class="lien" id="voir-classes">Signés, abandonnés et clos (<span id="n-classes">0</span>)</button>
   </div></footer>
 </div>
 
 <div id="rideau" class="cache"><div>Déposez le mail : SUIVI prépare la fiche</div></div>
 <div class="voile cache" id="voile"></div>
 <aside class="volet cache" id="volet" role="dialog" aria-modal="true"></aside>
+
+<dialog id="dlg-delai">
+  <form method="dialog">
+    <h3 id="dlg-delai-titre">Réajuster la date limite</h3>
+    <p class="sous" id="dlg-delai-actuelle"></p>
+    <label>Nouvelle date limite<input type="date" id="dlg-delai-date" required></label>
+    <label>Motif du report (obligatoire)<textarea id="dlg-delai-motif" class="motif-requis" maxlength="500" rows="3" placeholder="Pourquoi le délai est-il reporté ?"></textarea></label>
+    <div class="erreur" id="dlg-delai-erreur"></div>
+    <div class="boutons">
+      <button class="bouton" value="annuler" formnovalidate>Annuler</button>
+      <button class="bouton fort" value="valider" id="dlg-delai-valider">Enregistrer le report</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="dlg-etape">
   <form method="dialog">
@@ -294,8 +316,8 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 'use strict';
 var C = window.SuiviCalendrier, T = window.SuiviTypes;
 var CLE = 'suivi.code';
-var etat = { aujourdhui: C.aujourdhui(), dossiers: [], rappels: [], echeances: [], motifs: [], libellesEcheance: [], ouvert: null, choisi: null, jour: null };
-var LIBELLES = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné', formalites: 'Formalités' };
+var etat = { aujourdhui: C.aujourdhui(), dossiers: [], rappels: [], echeances: [], motifs: [], motifsCloture: [], libellesEcheance: [], ouvert: null, choisi: null, jour: null };
+var LIBELLES = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné', formalites: 'Formalités', clos: 'Clore' };
 var ORANGE = '#FF982D', ROUGE = '#E0456E';
 var COULEURS_LITURGIQUES = { blanc: '#E9D99A', rouge: '#E0456E', vert: '#46B98A', violet: '#B07CCB' };
 
@@ -345,7 +367,7 @@ $('form-acces').addEventListener('submit', function (e) {
 $('verrouiller').addEventListener('click', verrouiller);
 function demarrer() {
   return api('GET', { action: 'etat' }).then(function (j) {
-    etat.aujourdhui = j.aujourdhui; etat.motifs = j.motifs_abandon; etat.libellesEcheance = j.libelles_echeance || []; etat.jour = j;
+    etat.aujourdhui = j.aujourdhui; etat.motifs = j.motifs_abandon; etat.motifsCloture = j.motifs_cloture || ['Simple demande de renseignement']; etat.libellesEcheance = j.libelles_echeance || []; etat.jour = j;
     $('ecran-acces').classList.add('cache'); $('appli').classList.remove('cache');
     afficherJour(j);
     return charger();
@@ -388,6 +410,7 @@ function aTraiter() {
   var l = [];
   etat.rappels.forEach(function (r) { l.push({ type: 'rappel', r: r }); });
   etat.echeances.forEach(function (x) { l.push({ type: 'echeance', x: x, n: ecart(etat.aujourdhui, x.echeance) }); });
+  etat.dossiers.filter(actif).forEach(function (d) { if (T.sablier(d, etat.aujourdhui) === 'depasse') l.push({ type: 'sablier', d: d, fin: T.delais(d, etat.aujourdhui).fin }); });
   etat.dossiers.filter(actif).forEach(function (d) {
     if (d.signature_le || d.etape === 'abandonne' || !d.signature_prevue) return;
     var n = ecart(etat.aujourdhui, d.signature_prevue);
@@ -543,7 +566,7 @@ function dessiner() {
       var cherche = sansAccent([d.intitule, d.partie1, d.partie2, d.numero, d.nom_outlook, t.nom].join(' '));
       if (recherche && cherche.indexOf(recherche) < 0) g.classList.add('eteint');
       if (etat.choisi === d.id) g.classList.add('choisi');
-      aPlacer.push({ g: g, d: d, ang: ang, r: r, teinte: teinte, niv: niv, rappelDu: rappelDu, signe: !!d.signature_le, rang: allumage++ });
+      aPlacer.push({ g: g, d: d, ang: ang, r: r, teinte: teinte, niv: niv, rappelDu: rappelDu, signe: !!d.signature_le, sab: T.sablier(d, etat.aujourdhui), rang: allumage++ });
       g.addEventListener('mouseenter', function () { montrer(d); });
       g.addEventListener('focus', function () { montrer(d); });
       g.addEventListener('click', function () { ouvrir(d.id); });
@@ -635,7 +658,20 @@ function poserBarres(liste, largeur, pas) {
     tx.textContent = nom; g.appendChild(tx);
     var bout = surCercle(ang, fin + 11);
     if (e.rappelDu || e.signe) g.appendChild(sv('use', { href: '#' + (e.rappelDu ? 'i-cloche' : 'i-plume'), x: (bout[0] - 7).toFixed(1), y: (bout[1] - 7).toFixed(1), width: 14, height: 14, color: e.rappelDu ? ORANGE : teinte, 'pointer-events': 'none' }));
-    if (e.rappelDu || e.niv) { var pt = surCercle(ang, fin + (e.rappelDu || e.signe ? 24 : 9)); g.appendChild(sv('circle', { 'class': 'pulse', cx: pt[0].toFixed(1), cy: pt[1].toFixed(1), r: '3.6', fill: e.niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' })); }
+    /* sablier : au-delà de la cloche s'il y en a une ; un clic réajuste la date limite */
+    var decal = (e.rappelDu || e.signe) ? 25 : 11;
+    if (e.sab) {
+      var ps = surCercle(ang, fin + decal), gs = sv('g', { 'class': 'sablier' + (e.sab === 'depasse' ? ' clignote' : ''), role: 'button', tabindex: '0' });
+      gs.setAttribute('aria-label', e.sab === 'depasse' ? 'Date limite dépassée : réajuster' : 'Date limite dans moins de 3 jours : réajuster');
+      gs.appendChild(sv('circle', { 'class': 'zone-sab', cx: ps[0].toFixed(1), cy: ps[1].toFixed(1), r: '10' }));
+      gs.appendChild(sv('use', { href: '#i-sablier', x: (ps[0] - 7.5).toFixed(1), y: (ps[1] - 7.5).toFixed(1), width: 15, height: 15, color: e.sab === 'depasse' ? ORANGE : '#FFB667', 'pointer-events': 'none' }));
+      var ouvrirReport = function (ev) { ev.stopPropagation(); ev.preventDefault(); reporterDelai(e.d); };
+      gs.addEventListener('click', ouvrirReport);
+      gs.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') ouvrirReport(ev); });
+      g.appendChild(gs);
+      decal += 14;
+    }
+    if (e.rappelDu || e.niv) { var pt = surCercle(ang, fin + (e.rappelDu || e.signe || e.sab ? decal - 1 : 9)); g.appendChild(sv('circle', { 'class': 'pulse', cx: pt[0].toFixed(1), cy: pt[1].toFixed(1), r: '3.6', fill: e.niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' })); }
   });
 }
 function cadrer(liste) {
@@ -682,7 +718,9 @@ function avancement(d) {
   if (d.signature_le) return { texte: 'Signé le ' + fr(d.signature_le) + ' — classement le ' + fr(d.classe_le), classe: '' };
   var base = t.depuis === 'deces' ? 'Délai fiscal (6 mois après le décès)' : 'Délai moyen ' + x.duree + ' jours';
   if (x.decesManquant) return { texte: 'Date de décès à renseigner — délai compté depuis l’ouverture, au ' + fr(x.fin), classe: 'alerte' };
-  if (x.reste < 0) return { texte: base + ' dépassé de ' + (-x.reste) + ' jour' + (x.reste < -1 ? 's' : '') + ' (' + fr(x.fin) + ')', classe: 'alerte' };
+  if (x.reportee) base = 'Date limite réajustée';
+  if (x.reste < 0) return { texte: base + ' dépassé' + (x.reportee ? 'e' : '') + ' de ' + (-x.reste) + ' jour' + (x.reste < -1 ? 's' : '') + ' (' + fr(x.fin) + ')', classe: 'alerte' };
+  if (x.reportee) base = 'Date limite réajustée';
   return { texte: base + ' : jour ' + x.ecoule + ' sur ' + x.duree + ', échéance au ' + fr(x.fin), classe: x.part >= 0.75 ? 'alerte' : '' };
 }
 function montrer(d) {
@@ -702,7 +740,9 @@ function montrer(d) {
   p.appendChild(el('p', { texte: '0 relance — ' + (d.dernier_evt ? 'dernier échange le ' + fr(d.dernier_evt) : 'aucun échange') }));
   if (d.rappels_echus) p.appendChild(el('p', { classe: 'alerte', texte: d.rappels_echus + ' rappel' + (d.rappels_echus > 1 ? 's' : '') + ' dû' + (d.rappels_echus > 1 ? 's' : '') }));
   else if (d.rappels_ouverts) p.appendChild(el('p', { texte: d.rappels_ouverts + ' rappel' + (d.rappels_ouverts > 1 ? 's' : '') + ' en attente' }));
-  p.appendChild(el('div', { classe: 'actions' }, [el('button', { classe: 'bouton fort petit', texte: 'Ouvrir le dossier', onclick: function () { ouvrir(d.id); } })]));
+  var sab = T.sablier(d, etat.aujourdhui);
+  p.appendChild(el('div', { classe: 'actions' }, [el('button', { classe: 'bouton fort petit', texte: 'Ouvrir le dossier', onclick: function () { ouvrir(d.id); } }),
+    sab ? el('button', { classe: 'bouton petit', texte: sab === 'depasse' ? 'Délai dépassé : réajuster' : 'Réajuster la date limite', onclick: function () { reporterDelai(d); } }) : null]));
   // rappel en un clic, sans ouvrir le dossier
   var champ = el('input', { type: 'text', maxlength: '500', placeholder: 'Ajouter un rappel', 'aria-label': 'Texte du rappel' });
   function poser(delai) { if (!champ.value.trim()) return champ.focus(); api('POST', { action: 'rappel', id: d.id, texte: champ.value, delai: delai }).then(charger).catch(alerte); }
@@ -728,6 +768,11 @@ function panneauATraiter() {
     else if (x.type === 'echeance') ul.appendChild(el('li', {}, [
       el('b', { texte: x.x.intitule, onclick: function () { ouvrir(x.x.dossier_id); } }),
       el('span', { classe: x.n < 0 ? 'rouge' : '', texte: x.x.libelle + (x.n < 0 ? ' — échéance dépassée (' + fr(x.x.echeance) + ')' : ' — le ' + fr(x.x.echeance) + (x.n === 0 ? ', aujourd’hui' : ', dans ' + x.n + ' jour' + (x.n > 1 ? 's' : ''))) })
+    ]));
+    else if (x.type === 'sablier') ul.appendChild(el('li', {}, [
+      el('b', { texte: x.d.intitule, onclick: function () { ouvrir(x.d.id); } }),
+      el('span', { classe: 'alerte', texte: 'Date limite dépassée (' + fr(x.fin) + ')' }),
+      el('div', { classe: 'petits' }, [el('button', { classe: 'bouton petit', texte: 'Réajuster', onclick: function () { reporterDelai(x.d); } })])
     ]));
     else ul.appendChild(el('li', {}, [
       el('b', { texte: x.d.intitule, onclick: function () { ouvrir(x.d.id); } }),
@@ -776,18 +821,22 @@ function ouvrir(id) {
     v.appendChild(el('div', { classe: 'sous', texte: 'Dossier Outlook : ' + d.nom_outlook }));
     var courante = d.etape === 'formalites' ? 'signe' : d.etape;
     var et = el('div', { classe: 'etapes', role: 'group', 'aria-label': 'Étape' });
-    ['en_cours', 'avant_contrat', 'signe', 'abandonne'].forEach(function (k) {
-      var b = el('button', { classe: k === courante ? 'actuelle' : '', texte: LIBELLES[k] + (k === 'signe' && d.signature_le ? ' le ' + fr(d.signature_le) : '') });
-      if (d.etape === 'abandonne' || k === courante) b.disabled = true;
+    ['en_cours', 'avant_contrat', 'signe', 'abandonne', 'clos'].forEach(function (k) {
+      var b = el('button', { classe: k === courante ? 'actuelle' : '', texte: (k === 'clos' && d.etape === 'clos' ? 'Clos' : LIBELLES[k]) + (k === 'signe' && d.signature_le ? ' le ' + fr(d.signature_le) : '') });
+      if (d.etape === 'abandonne' || k === courante || (d.etape === 'clos' && (k === 'signe' || k === 'abandonne'))) b.disabled = true;
       else b.addEventListener('click', function () { changerEtape(d, k); });
       et.appendChild(b);
     });
     v.appendChild(et);
     if (d.etape === 'abandonne') v.appendChild(el('p', { classe: 'sous', texte: 'Abandonné : ' + (d.motif_abandon || '') + '. Si l’opération repart, créez un nouveau dossier.' }));
+    else if (d.etape === 'clos') v.appendChild(el('p', { classe: 'sous', texte: 'Clos le ' + fr(d.classe_le) + ' — ' + (d.motif_cloture || '') + '. Pour le rouvrir, choisissez « En cours » ou « Avant-contrat ».' }));
     else if (d.signature_le) v.appendChild(el('p', { classe: 'sous', texte: 'Classement dans « signés » le ' + fr(d.classe_le) + '.' }));
 
     v.appendChild(el('p', { classe: 'sous', style: 'color:' + T.type(d.type_dossier).couleur, texte: T.matiere(T.type(d.type_dossier).matiere).nom + ' · ' + T.type(d.type_dossier).nom + ' — ' + avancement(d).texte }));
-    if (d.etape !== 'abandonne' && !d.signature_le) v.appendChild(blocEcheances(d, j.echeances || []));
+    if (d.etape !== 'abandonne' && d.etape !== 'clos' && !d.signature_le) {
+      if (T.sablier(d, etat.aujourdhui) || d.date_limite) v.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton petit', texte: 'Réajuster la date limite', onclick: function () { reporterDelai(d); } })]));
+      v.appendChild(blocEcheances(d, j.echeances || []));
+    }
 
     var ouverts = j.rappels.filter(function (r) { return !r.fait_le; });
     var champR = el('input', { type: 'text', maxlength: '500', placeholder: 'Nouveau rappel', 'aria-label': 'Texte du rappel' });
@@ -1092,15 +1141,16 @@ document.addEventListener('drop', function (e) {
 /* ---------- Signés et abandonnés ---------- */
 $('voir-classes').addEventListener('click', function () {
   var classes = etat.dossiers.filter(function (d) { return !actif(d); }).sort(function (a, b) { return b.classe_le.localeCompare(a.classe_le); });
-  var v = enteteVolet('Signés et abandonnés');
+  var v = enteteVolet('Signés, abandonnés et clos');
   v.appendChild(el('p', { classe: 'sous', texte: 'Chaque fiche est retirée de SUIVI deux ans après son classement. Les mails restent dans Outlook.' }));
+  v.appendChild(bilanMois(classes));
   if (!classes.length) { v.appendChild(el('p', { texte: 'Aucun dossier classé.' })); return; }
   var tb = el('tbody');
   classes.forEach(function (d) {
     var retrait = (+d.classe_le.slice(0, 4) + 2) + d.classe_le.slice(4);
     tb.appendChild(el('tr', { classe: 'l', onclick: function () { ouvrir(d.id); } }, [
       el('td', { texte: d.intitule }),
-      el('td', { texte: d.etape === 'abandonne' ? 'Abandonné — ' + (d.motif_abandon || '') : 'Signé le ' + fr(d.signature_le) }),
+      el('td', { texte: d.etape === 'abandonne' ? 'Abandonné — ' + (d.motif_abandon || '') : d.etape === 'clos' ? 'Clos — ' + (d.motif_cloture || '') : 'Signé le ' + fr(d.signature_le) }),
       el('td', { texte: fr(d.classe_le) }), el('td', { texte: fr(retrait) })
     ]));
   });
@@ -1110,24 +1160,67 @@ $('voir-classes').addEventListener('click', function () {
 /* ---------- Changement d'étape : date obligatoire, motif pour l'abandon ---------- */
 function changerEtape(d, cible) {
   var dlg = $('dlg-etape');
-  $('dlg-titre').textContent = cible === 'signe' ? 'Acte signé — « ' + d.intitule + ' »' : cible === 'abandonne' ? 'Abandon — « ' + d.intitule + ' »' : 'Étape « ' + LIBELLES[cible] + ' »';
+  var clore = cible === 'clos', avecMotif = cible === 'abandonne' || clore;
+  $('dlg-titre').textContent = cible === 'signe' ? 'Acte signé — « ' + d.intitule + ' »' : cible === 'abandonne' ? 'Abandon — « ' + d.intitule + ' »' : clore ? 'Clôture — « ' + d.intitule + ' »' : (d.etape === 'clos' ? 'Réouverture, étape « ' : 'Étape « ') + LIBELLES[cible] + ' »';
   $('dlg-date').value = etat.aujourdhui; $('dlg-erreur').textContent = '';
-  $('dlg-motif-bloc').classList.toggle('cache', cible !== 'abandonne');
+  $('dlg-motif-bloc').classList.toggle('cache', !avecMotif);
   var s = $('dlg-motif'); s.textContent = '';
-  etat.motifs.concat(['Autre motif']).forEach(function (m) { s.appendChild(el('option', { value: m, texte: m })); });
+  (clore ? etat.motifsCloture.concat(['Autre']) : etat.motifs.concat(['Autre motif'])).forEach(function (m) { s.appendChild(el('option', { value: m, texte: m })); });
+  var autre = clore ? 'Autre' : 'Autre motif';
+  $('dlg-libre-bloc').firstChild.textContent = clore ? 'Précisez le contexte' : 'Précisez le motif';
   $('dlg-libre').value = ''; $('dlg-libre-bloc').classList.add('cache');
-  s.onchange = function () { $('dlg-libre-bloc').classList.toggle('cache', s.value !== 'Autre motif'); };
+  s.onchange = function () { $('dlg-libre-bloc').classList.toggle('cache', s.value !== autre); };
   dlg.onclose = function () {
     if (dlg.returnValue !== 'valider') return;
-    var motif = s.value === 'Autre motif' ? $('dlg-libre').value : s.value;
-    api('POST', { action: 'etape', id: d.id, etape: cible, date: $('dlg-date').value, motif: cible === 'abandonne' ? motif : undefined })
+    var motif = s.value === autre ? (clore ? 'Autre : ' : '') + $('dlg-libre').value.trim() : s.value;
+    api('POST', { action: 'etape', id: d.id, etape: cible, date: $('dlg-date').value, motif: avecMotif ? motif : undefined })
       .then(charger).then(function () { return ouvrir(d.id); }).catch(alerte);
   };
   $('dlg-valider').onclick = function (e) {
     if (!$('dlg-date').value) { e.preventDefault(); $('dlg-erreur').textContent = 'La date est obligatoire.'; }
-    else if (cible === 'abandonne' && s.value === 'Autre motif' && !$('dlg-libre').value.trim()) { e.preventDefault(); $('dlg-erreur').textContent = 'Précisez le motif.'; }
+    else if (avecMotif && s.value === autre && !$('dlg-libre').value.trim()) { e.preventDefault(); $('dlg-erreur').textContent = clore ? 'Précisez le contexte.' : 'Précisez le motif.'; }
   };
   dlg.showModal();
+}
+
+/* ---------- Sablier : réajuster la date limite, motif obligatoire ---------- */
+function reporterDelai(d) {
+  var dlg = $('dlg-delai'), x = T.delais(d, etat.aujourdhui);
+  $('dlg-delai-titre').textContent = 'Réajuster la date limite — « ' + d.intitule + ' »';
+  $('dlg-delai-actuelle').textContent = 'Date limite actuelle : ' + fr(x.fin) + (x.reste < 0 ? ' (dépassée de ' + (-x.reste) + ' jour' + (x.reste < -1 ? 's' : '') + ')' : '') + (x.reportee ? ', déjà réajustée' : '');
+  var champ = $('dlg-delai-date'); champ.min = etat.aujourdhui;
+  champ.value = x.fin >= etat.aujourdhui ? C.decaler(x.fin, 15) : C.decaler(etat.aujourdhui, 15);
+  $('dlg-delai-motif').value = ''; $('dlg-delai-erreur').textContent = '';
+  dlg.onclose = function () {
+    if (dlg.returnValue !== 'valider') return;
+    api('POST', { action: 'delai_reporter', id: d.id, date: champ.value, motif: $('dlg-delai-motif').value })
+      .then(charger).then(function () { if (etat.ouvert === d.id) return ouvrir(d.id); }).catch(alerte);
+  };
+  $('dlg-delai-valider').onclick = function (e) {
+    if (!champ.value) { e.preventDefault(); $('dlg-delai-erreur').textContent = 'Indiquez la nouvelle date limite.'; }
+    else if (champ.value < etat.aujourdhui) { e.preventDefault(); $('dlg-delai-erreur').textContent = 'La nouvelle date ne peut pas être passée.'; }
+    else if (!$('dlg-delai-motif').value.trim()) { e.preventDefault(); $('dlg-delai-erreur').textContent = 'Le motif du report est obligatoire.'; $('dlg-delai-motif').focus(); }
+  };
+  dlg.showModal();
+  setTimeout(function () { $('dlg-delai-motif').focus(); }, 0);
+}
+
+/* ---------- Bilan des dossiers classés du mois (le courriel du 1er du mois reprendra ces nombres) ---------- */
+function bilanMois(classes) {
+  var mois = etat.aujourdhui.slice(0, 7), precedent = C.decaler(mois + '-01', -1).slice(0, 7);
+  function bloc(m) {
+    var l = classes.filter(function (d) { return d.classe_le && d.classe_le.slice(0, 7) === m; });
+    var clos = {}, nClos = 0, nAb = 0, nSig = 0;
+    l.forEach(function (d) {
+      if (d.etape === 'clos') { var k = /^Autre/.test(d.motif_cloture || '') ? 'Autre' : (d.motif_cloture || 'Sans motif'); clos[k] = (clos[k] || 0) + 1; nClos++; }
+      else if (d.etape === 'abandonne') nAb++; else nSig++;
+    });
+    var nomMois = new Date(m + '-15T12:00:00Z').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    var detail = Object.keys(clos).map(function (k) { return clos[k] + ' « ' + k.toLowerCase() + ' »'; }).join(', ');
+    return el('li', {}, [el('b', { texte: nomMois.charAt(0).toUpperCase() + nomMois.slice(1) + ' : ' }),
+      nClos + ' clos' + (detail ? ' (' + detail + ')' : '') + ', ' + nAb + ' abandonné' + (nAb > 1 ? 's' : '') + ', ' + nSig + ' signé' + (nSig > 1 ? 's' : '')]);
+  }
+  return el('section', { classe: 'bloc' }, [el('h3', { texte: 'Bilan' }), el('ul', { classe: 'chrono' }, [bloc(mois), bloc(precedent)])]);
 }
 
 /* ---------- Démarrage ---------- */

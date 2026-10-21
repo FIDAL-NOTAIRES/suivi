@@ -56,14 +56,25 @@
     var fin;
     if (t.mois) fin = ajouterMois(depart, t.mois);
     else fin = decaler(depart, (t.ajustable && d.delai_jours > 0) ? d.delai_jours : t.delai);
+    var reportee = false;
+    if (d.date_limite) { fin = d.date_limite; reportee = true; }   /* date limite réajustée à la main (21/10/2026) */
     var duree = Math.max(1, jours(depart, fin));
     var ecoule = Math.max(0, jours(depart, aujourdhui));
     return {
       type: t, depart: depart, fin: fin, duree: duree, ecoule: ecoule,
       part: ecoule / duree,                       /* 0 au départ, 1 au délai moyen */
-      reste: jours(aujourdhui, fin),
+      reste: jours(aujourdhui, fin), reportee: reportee,
       decesManquant: t.depuis === 'deces' && !d.date_deces
     };
+  }
+  /* Sablier (21/10/2026) : il apparaît 3 jours avant la date limite, puis clignote une fois
+     la date passée ; rien pour un dossier signé, abandonné ou clos. */
+  function sablier(d, aujourdhui) {
+    if (d.signature_le || d.etape === 'abandonne' || d.etape === 'clos' || d.etape === 'formalites') return null;
+    var x = delais(d, aujourdhui);
+    if (x.reste < 0) return 'depasse';
+    if (x.reste <= 3) return 'proche';
+    return null;
   }
   function delaiParDefaut(id) { var t = type(id); return t.mois ? null : t.delai; }
 
@@ -83,7 +94,7 @@
 
   var api = {
     MATIERES: MATIERES, TYPES: TYPES, DEFAUT: DEFAUT,
-    type: type, matiere: matiere, delais: delais, delaiParDefaut: delaiParDefaut,
+    type: type, matiere: matiere, delais: delais, sablier: sablier, delaiParDefaut: delaiParDefaut,
     deviner: deviner, ajouterMois: ajouterMois, jours: jours
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
