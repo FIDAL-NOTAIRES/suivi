@@ -6,6 +6,8 @@
 <meta name="robots" content="noindex">
 <title>SUIVI — dossiers</title>
 <script src="https://connexion-omega.vercel.app/bandeau.js" defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://connexion-omega.vercel.app/acces.js"></script>
 <script src="/calendrier.js"></script>
 <script src="/types.js"></script>
 <script src="/lecture.js"></script>
@@ -185,6 +187,10 @@ textarea{min-height:60px;resize:vertical}
 .chrono .etape{color:var(--cyan)}
 .chrono .rappel{color:#FFB667}
 .chrono .creation{color:var(--gris)}
+.chrono .mail{color:#CFE6EE}
+.mail-attente b{display:block;color:#EDF6FA;font-weight:600}
+.mail-attente span{display:block;margin-top:2px}
+.mail-attente select{flex:1;min-width:180px}
 .rappels li{grid-template-columns:1fr auto}
 .rappels .echu{color:#FFB667;font-weight:600}
 .petits{display:flex;gap:6px}
@@ -328,7 +334,7 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 'use strict';
 var C = window.SuiviCalendrier, T = window.SuiviTypes;
 var CLE = 'suivi.code';
-var etat = { aujourdhui: C.aujourdhui(), collaborateurs: [], dossiers: [], rappels: [], echeances: [], motifs: [], motifsCloture: [], libellesEcheance: [], ouvert: null, choisi: null, jour: null };
+var etat = { aujourdhui: C.aujourdhui(), collaborateurs: [], dossiers: [], rappels: [], echeances: [], motifs: [], motifsCloture: [], libellesEcheance: [], ouvert: null, choisi: null, jour: null, releves: null };
 var LIBELLES = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné', formalites: 'Formalités', clos: 'Clore' };
 var ORANGE = '#FF982D', ROUGE = '#E0456E';
 var COULEURS_LITURGIQUES = { blanc: '#E9D99A', rouge: '#E0456E', vert: '#46B98A', violet: '#B07CCB' };
@@ -393,7 +399,10 @@ function demarrer() {
     etat.aujourdhui = j.aujourdhui; etat.motifs = j.motifs_abandon; etat.motifsCloture = j.motifs_cloture || ['Simple demande de renseignement']; etat.libellesEcheance = j.libelles_echeance || []; etat.jour = j;
     $('ecran-acces').classList.add('cache'); $('appli').classList.remove('cache');
     afficherJour(j);
-    return charger();
+    return charger().then(function () {
+      lireReleves();
+      if (!etat.minuterie) etat.minuterie = setInterval(function () { if (sessionStorage.getItem(CLE)) lireReleves(); }, 15 * 60000);
+    });
   });
 }
 
@@ -415,7 +424,7 @@ function afficherJour(j) {
 /* ---------- Données ---------- */
 function charger() {
   return api('GET', { action: 'liste' }).then(function (j) {
-    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus; etat.echeances = j.echeances_proches || [];
+    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus; etat.echeances = j.echeances_proches || []; etat.releves = j.releves || null;
     dessiner();
   });
 }
@@ -804,7 +813,10 @@ function panneauATraiter() {
     ]));
   });
   if (l.length) p.appendChild(ul);
-  p.appendChild(el('p', { texte: 'Les relances à faire apparaîtront ici en tête dès que la messagerie sera branchée.' }));
+  var nAR = etat.releves ? etat.releves.a_rattacher : 0;
+  if (nAR) p.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort petit', texte: nAR + (nAR > 1 ? ' mails à rattacher' : ' mail à rattacher'), onclick: ouvrirARattacher })]));
+  p.appendChild(blocReleves());
+  p.appendChild(el('p', { texte: 'Les relances à faire apparaîtront ici en tête avec le lot suivant du pont.' }));
 }
 function rappelAction(action, id) {
   api('POST', { action: action, rappel_id: id }).then(function () { return etat.ouvert ? ouvrir(etat.ouvert) : null; }).then(charger).catch(alerte);
@@ -901,7 +913,7 @@ function ouvrir(id) {
         if (!note.value.trim()) return note.focus();
         api('POST', { action: 'note', id: d.id, texte: note.value }).then(function () { return ouvrir(d.id); }).then(charger).catch(alerte);
       } })]),
-      el('p', { classe: 'sous', texte: 'Les mails du dossier s’afficheront ici dès que la messagerie sera branchée.' }),
+      el('p', { classe: 'sous', texte: 'Les mails relevés dans la messagerie s’affichent ici avec leur résumé (jamais leur texte).' }),
       ulC
     ]));
 
@@ -1068,7 +1080,8 @@ function formulaire(d, prop) {
       etude: etudeL, relances: relancesL,
       type_dossier: c('type_dossier').value, date_ouverture: c('date_ouverture').value, date_deces: c('date_deces').value || null, delai_jours: c('delai_jours').value || null };
     if (nouveau) donnees.etape = c('etape').value;
-    if (prop) donnees.mail = prop.mail;
+    if (prop && !prop.mail_outlook) donnees.mail = prop.mail;
+    if (prop && prop.mail_outlook) donnees.mail_outlook = prop.mail_outlook;   /* mail relevé : rattaché, pas de seconde ligne */
     api('POST', donnees).then(function (j) { return charger().then(function () { return ouvrir(j.dossier.id); }); }).catch(function (x) { err.textContent = x.message; });
   });
   return f;
@@ -1343,6 +1356,138 @@ function bilanMois(classes) {
       nClos + ' clos' + (detail ? ' (' + detail + ')' : '') + ', ' + nAb + ' abandonné' + (nAb > 1 ? 's' : '') + ', ' + nSig + ' signé' + (nSig > 1 ? 's' : '')]);
   }
   return el('section', { classe: 'bloc' }, [el('h3', { texte: 'Bilan' }), el('ul', { classe: 'chrono' }, [bloc(mois), bloc(precedent)])]);
+}
+
+/* ---------- Pont provisoire : relevés des mails déposés dans le Drive (arbitrages du 21/10/2026) ----------
+   Des tâches programmées Claude lisent la messagerie et déposent une fiche JSON par relevé dans le dossier
+   Drive « SUIVI – relevés ». À l'ouverture (puis toutes les 15 minutes), la page lit les fiches nouvelles
+   avec le jeton Drive de la journée (MORNING) et les confie au serveur, qui rattache les mails. */
+var DOSSIER_RELEVES = 'SUIVI – relevés';
+var pontEnCours = false, pontMessage = '';
+function drive(url, jeton) {
+  return fetch('https://www.googleapis.com/drive/v3/' + url, { headers: { Authorization: 'Bearer ' + jeton } }).then(function (r) {
+    if (!r.ok) throw new Error('Drive ' + r.status);
+    return url.indexOf('alt=media') >= 0 ? r.text() : r.json();
+  });
+}
+function lireReleves() {
+  if (pontEnCours) return Promise.resolve();
+  if (!window.FidalAcces || !window.FidalAcces.jeton) { pontMessage = 'Relevés des mails : connexion Google indisponible.'; panneauSiLibre(); return Promise.resolve(); }
+  pontEnCours = true;
+  var jeton;
+  return Promise.resolve(window.FidalAcces.jeton()).then(function (j) {
+    jeton = j;
+    if (!jeton) throw new Error('Drive non connecté : ouvrez la journée dans MORNING.');
+    var q = "name = '" + DOSSIER_RELEVES.replace(/'/g, "\\'") + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+    return drive('files?fields=files(id)&pageSize=5&q=' + encodeURIComponent(q), jeton);
+  }).then(function (r) {
+    if (!r.files || !r.files.length) throw new Error('dossier Drive « ' + DOSSIER_RELEVES + ' » introuvable.');
+    var q = "'" + r.files[0].id + "' in parents and trashed = false and name contains '.json'";
+    return Promise.all([
+      drive('files?orderBy=createdTime&pageSize=200&fields=files(id,name,createdTime)&q=' + encodeURIComponent(q), jeton),
+      api('GET', { action: 'releves_repris' })
+    ]);
+  }).then(function (rr) {
+    var connus = {}; (rr[1].ids || []).forEach(function (id) { connus[id] = 1; });
+    /* les fiches d'essai (« essai-… ») ne sont pas des relevés */
+    var nouvelles = (rr[0].files || []).filter(function (f) { return !connus[f.id] && f.name.indexOf('essai') !== 0; });
+    if (!nouvelles.length) return null;
+    var fiches = [];
+    return nouvelles.reduce(function (p, f) {
+      return p.then(function () {
+        return drive('files/' + encodeURIComponent(f.id) + '?alt=media', jeton).then(function (t) {
+          var c = null; try { c = JSON.parse(t); } catch (e) { c = null; }
+          fiches.push({ drive_id: f.id, nom: f.name, contenu: c });
+        }).catch(function () { /* fichier momentanément illisible : il sera repris au prochain passage */ });
+      });
+    }, Promise.resolve()).then(function () {
+      var lots = []; for (var i = 0; i < fiches.length; i += 10) lots.push(fiches.slice(i, i + 10));
+      var total = { fiches: 0, rattaches: 0, a_rattacher: 0 };
+      return lots.reduce(function (p, lot) {
+        return p.then(function () { return api('POST', { action: 'releves', fiches: lot }).then(function (j) {
+          total.fiches += j.bilan.fiches; total.rattaches += j.bilan.rattaches; total.a_rattacher += j.bilan.a_rattacher; etat.releves = j.releves;
+        }); });
+      }, Promise.resolve()).then(function () { return total; });
+    });
+  }).then(function (total) {
+    pontMessage = total && total.fiches ? 'Dernière reprise : ' + total.fiches + (total.fiches > 1 ? ' relevés, ' : ' relevé, ') + total.rattaches + ' mail' + (total.rattaches > 1 ? 's' : '') + ' rangé' + (total.rattaches > 1 ? 's' : '') + ', ' + total.a_rattacher + ' à rattacher.' : '';
+    return charger();
+  }).catch(function (err) {
+    pontMessage = 'Relevés des mails : ' + err.message; panneauSiLibre();
+  }).then(function () { pontEnCours = false; });
+}
+function panneauSiLibre() { if (!etat.choisi) panneauATraiter(); }
+function heureCourte(iso) { return iso ? new Date(iso).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
+function blocReleves() {
+  var r = etat.releves, enfants = [];
+  if (!r) return el('p', { classe: 'sous', texte: pontMessage || 'Les relevés des mails apparaîtront ici dès la première fiche reprise.' });
+  enfants.push(el('span', { texte: r.dernier ? 'Dernier relevé : ' + heureCourte(r.dernier) : 'Aucun relevé reçu pour l’instant.' }));
+  if (r.manques) enfants.push(el('span', { classe: r.manques >= 3 ? 'rouge' : 'alerte', texte: ' — ' + r.manques + ' relevé' + (r.manques > 1 ? 's' : '') + ' manqué' + (r.manques > 1 ? 's' : '') + ' d’affilée' }));
+  (r.erreurs || []).slice(0, 2).forEach(function (e) { enfants.push(el('span', { classe: 'alerte', texte: ' — fiche en erreur : ' + (e.erreur || e.nom) })); });
+  if (pontMessage) enfants.push(el('span', { texte: ' — ' + pontMessage }));
+  return el('p', { classe: 'sous' }, enfants);
+}
+
+/* ---------- Mails à rattacher : rattacher, créer, ignorer ---------- */
+var PREFIXES = /^(vente|acquisition|donation(-partage)?|succession|bail|cession|promesse|licitation|testament|contrat de mariage|procuration|certification|fiducie)\s+/i;
+function propDuMail(m) {
+  var nom = m.dossier_pressenti || m.objet || '';
+  var sans = nom.replace(PREFIXES, ''), morceaux = sans.split(/\s+\/\s+/);
+  var etude = (m.etude || []).concat([m.expediteur].concat(m.destinataires || [], m.copies || []).filter(function (a) { return a && /@fidal\.notaires\.fr$/.test(a); }));
+  var ext = [m.expediteur].concat(m.destinataires || [], m.copies || []).filter(function (a) { return a && !/@fidal\.notaires\.fr$/.test(a); });
+  return {
+    intitule: nom.toUpperCase(), partie1: morceaux[0] || '', partie2: morceaux[1] || '', numero: '', signature_prevue: (m.changements && m.changements.date_signature) || '',
+    adresses: ext.filter(function (a, i) { return ext.indexOf(a) === i; }), etude: etude.filter(function (a, i) { return T.estEtude(a) && etude.indexOf(a) === i; }),
+    etape: 'en_cours', type_dossier: '', date_ouverture: m.date_mail ? C.aujourdhui(new Date(m.date_mail)) : etat.aujourdhui, mail_outlook: m.id_outlook,
+    mail: { objet: m.objet, expediteur: m.sens === 'envoyé' ? 'à ' + (m.destinataires || []).join(', ') : m.expediteur, date: m.date_mail ? C.aujourdhui(new Date(m.date_mail)) : '', apercu: m.resume || '' }
+  };
+}
+function meilleurDossier(m, ouverts) {
+  var cible = sansAccent(m.dossier_pressenti || m.objet || '').replace(/[^a-z0-9]+/g, ' ');
+  var meilleur = null, score = 0;
+  ouverts.forEach(function (d) {
+    var mots = sansAccent((d.partie1 || '') + ' ' + (d.partie2 || '') + ' ' + (d.numero || '')).split(/[^a-z0-9]+/).filter(function (x) { return x.length > 2; });
+    var s = mots.filter(function (x) { return cible.indexOf(x) >= 0; }).length;
+    if (s > score) { score = s; meilleur = d; }
+  });
+  return meilleur;
+}
+function ouvrirARattacher() {
+  return api('GET', { action: 'a_rattacher' }).then(function (j) {
+    etat.ouvert = null;
+    var v = enteteVolet('Mails à rattacher');
+    var ouverts = etat.dossiers.filter(function (d) { return actif(d) && d.etape !== 'abandonne' && d.etape !== 'clos'; })
+      .sort(function (a, b) { return a.intitule.localeCompare(b.intitule, 'fr'); });
+    if (!j.mails.length) { v.appendChild(el('p', { classe: 'sous', texte: 'Aucun mail en attente : tout est rangé.' })); return; }
+    v.appendChild(el('p', { classe: 'sous', texte: j.mails.length + ' mail' + (j.mails.length > 1 ? 's' : '') + ' que SUIVI n’a pas pu ranger avec certitude, du plus récent au plus ancien.' }));
+    j.mails.forEach(function (m) {
+      var choix = el('select', { 'aria-label': 'Dossier' });
+      choix.appendChild(el('option', { value: '', texte: 'Choisir le dossier…' }));
+      var proche = meilleurDossier(m, ouverts);
+      ouverts.forEach(function (d) { var o = el('option', { value: String(d.id), texte: d.intitule }); if (proche && d.id === proche.id) o.selected = true; choix.appendChild(o); });
+      var qui = m.sens === 'envoyé' ? 'Envoyé à ' + (m.destinataires || []).slice(0, 2).join(', ') : 'Reçu de ' + (m.expediteur || '?');
+      var details = [el('b', { texte: m.objet || '(sans objet)' }), el('span', { classe: 'sous', texte: heureCourte(m.date_mail) + ' — ' + qui })];
+      if (m.resume) details.push(el('span', { texte: m.resume }));
+      if (m.dossier_pressenti) details.push(el('span', { classe: 'sous', texte: 'Dossier pressenti : ' + m.dossier_pressenti + (m.motif_rattachement ? ' (' + m.motif_rattachement + ')' : '') + ' — ' + (m.motif_etat || m.certitude) }));
+      else if (m.motif_etat) details.push(el('span', { classe: 'sous', texte: m.motif_etat }));
+      if (m.pieces_jointes && m.pieces_jointes.length) details.push(el('span', { classe: 'sous', texte: 'Pièces jointes : ' + m.pieces_jointes.join(', ') }));
+      var li = el('section', { classe: 'bloc mail-attente' }, details.concat([
+        el('div', { classe: 'ligne' }, [choix,
+          el('button', { classe: 'bouton fort petit', texte: 'Rattacher', onclick: function () {
+            if (!choix.value) return choix.focus();
+            api('POST', { action: 'mail_rattacher', mail_id: m.id_outlook, id: +choix.value }).then(charger).then(ouvrirARattacher).catch(alerte);
+          } }),
+          el('button', { classe: 'bouton petit', texte: 'Créer un dossier', onclick: function () { nouveauDossier(propDuMail(m)); } }),
+          el('button', { classe: 'bouton petit', texte: 'Ignorer', onclick: function () {
+            api('POST', { action: 'mail_ignorer', mail_id: m.id_outlook }).then(function (r) {
+              if (r.fois === 2) window.alert('Deuxième mail ignoré de ' + r.expediteur + ' : ses prochains mails seront écartés d’office.');
+            }).then(charger).then(ouvrirARattacher).catch(alerte);
+          } })
+        ])
+      ]));
+      v.appendChild(li);
+    });
+  }).catch(alerte);
 }
 
 /* ---------- Démarrage ---------- */
