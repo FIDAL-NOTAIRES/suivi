@@ -1,6 +1,6 @@
 // SUIVI — fonction serveur unique (lot 1 : sans messagerie).
 // GET  /api/suivi?action=etat|liste|dossier&id=…
-// POST /api/suivi  { action: creer|modifier|etape|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer, … }
+// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer, … }
 // Accès : en-tête x-suivi-code comparé à la variable SUIVI_CODE_ADMIN (JFD seul).
 'use strict';
 const crypto = require('crypto');
@@ -14,7 +14,8 @@ function db() {
   return neon(process.env.DATABASE_URL);
 }
 
-const ETAPES = ['en_cours', 'avant_contrat', 'signe', 'abandonne'];
+const ETAPES = ['en_cours', 'avant_contrat', 'signe', 'abandonne', 'clos'];
+const MOTIFS_CLOTURE = ['Simple demande de renseignement'];   /* + « Autre », avec le contexte en saisie libre */
 const MOTIFS_ABANDON = ['Rétractation', 'Condition suspensive non réalisée', 'Refus de prêt', 'Vente à un tiers'];
 const GRACE_JOURS = 30;
 const LIBELLES_ECHEANCE = ['Levée des conditions suspensives', 'Obtention du prêt', 'Date butoir de réitération'];
@@ -42,7 +43,7 @@ function nomOutlook(d) {
   return [d.numero, p2 ? p1 + ' / ' + p2 : p1].filter(Boolean).join(' ');
 }
 function erreur(res, code, message) { res.status(code).json({ erreur: message }); }
-const libelle = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné' };
+const libelle = { en_cours: 'En cours', avant_contrat: 'Avant-contrat', signe: 'Signé', abandonne: 'Abandonné', clos: 'Clos' };
 const fr = s => s.split('-').reverse().join('/');
 
 // Un mail déposé : on n'en garde que l'objet, l'expéditeur et la date (jamais le texte)
@@ -86,7 +87,7 @@ async function liste(sql, jour) {
 function versChaines(o) {
   const x = { ...o };
   for (const k of ['signature_prevue', 'signature_le', 'classe_le', 'echeance', 'fait_le', 'faite_le', 'date_evt', 'dernier_evt',
-    'date_ouverture', 'date_deces', 'prochaine_echeance']) {
+    'date_ouverture', 'date_deces', 'prochaine_echeance', 'date_limite']) {
     if (x[k] instanceof Date) x[k] = x[k].toISOString().slice(0, 10);
   }
   return x;
@@ -106,7 +107,7 @@ async function traiter(req, res) {
   const action = req.method === 'GET' ? q.action : b.action;
 
   if (req.method === 'GET' && action === 'etat') {
-    return res.json({ aujourdhui: jour, jour: cal.infoJour(jour), couleur_du_temps: cal.couleurDuTemps(jour), motifs_abandon: MOTIFS_ABANDON, libelles_echeance: LIBELLES_ECHEANCE });
+    return res.json({ aujourdhui: jour, jour: cal.infoJour(jour), couleur_du_temps: cal.couleurDuTemps(jour), motifs_abandon: MOTIFS_ABANDON, motifs_cloture: MOTIFS_CLOTURE, libelles_echeance: LIBELLES_ECHEANCE });
   }
   if (req.method === 'GET' && action === 'liste') return res.json({ aujourdhui: jour, ...(await liste(sql, jour)) });
   if (req.method === 'GET' && action === 'dossier') {
@@ -170,16 +171,40 @@ async function traiter(req, res) {
       const classe = cal.decaler(le, GRACE_JOURS);
       [maj] = await sql`UPDATE suivi_dossier SET etape = 'formalites', signature_le = ${le}, classe_le = ${classe}, maj_le = now() WHERE id = ${id} RETURNING *`;
       await evenement(sql, id, 'etape', 'Acte signé le ' + fr(le) + ' — formalités ; classement dans « signés » le ' + fr(classe), le);
+    } else if (cible === 'clos') {
+      const motif = texte(b.motif, 300);
+      if (!motif) return erreur(res, 400, 'Le motif de clôture est obligatoire.');
+      if (d.etape === 'clos') return erreur(res, 409, 'Ce dossier est déjà clos.');
+      [maj] = await sql`UPDATE suivi_dossier SET etape = 'clos', motif_cloture = ${motif}, classe_le = ${le}, maj_le = now() WHERE id = ${id} RETURNING *`;
+      // les adresses restent rattachées 30 jours après la clôture, comme après une signature
+      await evenement(sql, id, 'etape', 'Dossier clos le ' + fr(le) + ' — motif : ' + motif + ' ; adresses rattachées jusqu’au ' + fr(cal.decaler(le, GRACE_JOURS)), le);
     } else if (cible === 'abandonne') {
       const motif = texte(b.motif, 200);
       if (!motif) return erreur(res, 400, 'Le motif d’abandon est obligatoire.');
       [maj] = await sql`UPDATE suivi_dossier SET etape = 'abandonne', motif_abandon = ${motif}, classe_le = ${le}, maj_le = now() WHERE id = ${id} RETURNING *`;
       await evenement(sql, id, 'etape', 'Dossier abandonné le ' + fr(le) + ' — motif : ' + motif, le);
     } else {
-      [maj] = await sql`UPDATE suivi_dossier SET etape = ${cible}, signature_le = NULL, classe_le = NULL, maj_le = now() WHERE id = ${id} RETURNING *`;
-      await evenement(sql, id, 'etape', 'Étape « ' + libelle[cible] + ' » le ' + fr(le), le);
+      const rouvert = d.etape === 'clos';
+      [maj] = await sql`UPDATE suivi_dossier SET etape = ${cible}, signature_le = NULL, classe_le = NULL, motif_cloture = NULL, maj_le = now() WHERE id = ${id} RETURNING *`;
+      await evenement(sql, id, 'etape', (rouvert ? 'Dossier rouvert le ' + fr(le) + ', étape « ' : 'Étape « ') + libelle[cible] + (rouvert ? ' »' : ' » le ' + fr(le)), le);
     }
     return res.json({ dossier: { ...versChaines(maj), nom_outlook: nomOutlook(maj) } });
+  }
+
+  // Réajustement de la date limite d'un dossier (clic sur le sablier) : motif obligatoire
+  if (action === 'delai_reporter') {
+    const id = +b.id, nouvelle = date(b.date), motif = texte(b.motif, 500);
+    if (!nouvelle) return erreur(res, 400, 'La nouvelle date limite est obligatoire.');
+    if (nouvelle < jour) return erreur(res, 400, 'La nouvelle date limite ne peut pas être passée.');
+    if (!motif) return erreur(res, 400, 'Le motif du report est obligatoire.');
+    const [d] = await sql`SELECT * FROM suivi_dossier WHERE id = ${id}`;
+    if (!d) return erreur(res, 404, 'Dossier introuvable.');
+    if (d.signature_le || ['abandonne', 'clos', 'formalites'].includes(d.etape)) return erreur(res, 409, 'Ce dossier n’a plus de délai à suivre.');
+    const ancienne = types.delais(versChaines(d), jour).fin;
+    if (nouvelle === ancienne) return erreur(res, 400, 'La nouvelle date est identique à la date limite actuelle.');
+    const [maj] = await sql`UPDATE suivi_dossier SET date_limite = ${nouvelle}, maj_le = now() WHERE id = ${id} RETURNING *`;
+    await evenement(sql, id, 'delai', 'Date limite reportée du ' + fr(ancienne) + ' au ' + fr(nouvelle) + ' — motif : ' + motif, jour);
+    return res.json({ dossier: { ...versChaines(maj), nom_outlook: nomOutlook(maj) }, ancienne });
   }
 
   if (action === 'note') {
