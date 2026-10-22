@@ -1,12 +1,13 @@
 // SUIVI — fonction serveur unique (lot 1, bloc « Étude », lot « pont 1 » : reprise des relevés de mails déposés dans le Drive).
-// GET  /api/suivi?action=etat|liste|dossier&id=…|collaborateurs|releves_repris|a_rattacher
-// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|importer_collaborateurs|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer|releves|mail_rattacher|mail_ignorer, … }
+// GET  /api/suivi?action=etat|liste|dossier&id=…|collaborateurs|releves_repris|a_rattacher|propositions|propositions_reprises
+// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|importer_collaborateurs|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer|releves|mail_rattacher|mail_ignorer|propositions|proposition_ecarter|proposition_fusionner, … }
 // Accès : en-tête x-suivi-code comparé à la variable SUIVI_CODE_ADMIN (JFD seul).
 'use strict';
 const crypto = require('crypto');
 const cal = require('../calendrier.js');
 const types = require('../types.js');
 const pont = require('../releves.js');
+const props = require('../propositions.js');
 
 let sqlInjecte = null; // pour les essais
 function db() {
@@ -120,7 +121,9 @@ async function traiter(req, res) {
     const l = await liste(sql, jour);
     let releves = null;
     try { releves = await pont.etatReleves(sql); } catch (e) { releves = null; } // tables du pont pas encore créées
-    return res.json({ aujourdhui: jour, ...l, releves });
+    let propositions = null;
+    try { propositions = await props.compter(sql); } catch (e) { propositions = null; } // suivi-7.sql pas encore exécuté
+    return res.json({ aujourdhui: jour, ...l, releves, propositions });
   }
   // Pont provisoire : identifiants Drive des fiches déjà reprises (14 derniers jours)
   if (req.method === 'GET' && action === 'releves_repris') {
@@ -128,6 +131,12 @@ async function traiter(req, res) {
     return res.json({ ids: r.map(x => x.drive_id) });
   }
   if (req.method === 'GET' && action === 'a_rattacher') return res.json({ mails: await pont.aRattacher(sql) });
+  // Module de création : fiches proposées à partir du balayage
+  if (req.method === 'GET' && action === 'propositions_reprises') {
+    const r = await sql`SELECT drive_id FROM suivi_proposition_lot`;
+    return res.json({ ids: r.map(x => x.drive_id) });
+  }
+  if (req.method === 'GET' && action === 'propositions') return res.json({ propositions: await props.lister(sql) });
   if (req.method === 'GET' && action === 'dossier') {
     const id = +q.id;
     const [d] = await sql`SELECT * FROM suivi_dossier WHERE id = ${id}`;
@@ -189,6 +198,11 @@ async function traiter(req, res) {
       if (b.mail) { const l = ligneMail(b.mail); await evenement(sql, d.id, 'note', l.texte, l.jour || jour); }
       // dossier créé depuis « à rattacher » : le mail relevé y est rattaché (rattachement à la main, adresses apprises)
       if (b.mail_outlook) await pont.rattacherMain(sql, texte(b.mail_outlook, 500), d.id);
+      // dossier créé depuis une fiche proposée par le balayage : la fiche est marquée validée
+      if (b.proposition) {
+        const p = await props.marquer(sql, b.proposition, 'valide', d.id);
+        if (p) await evenement(sql, d.id, 'note', 'Créé à partir de la fiche proposée par le balayage des mails' + (p.sources && p.sources.length ? ' (tranches ' + p.sources.join(', ') + ')' : '') + (p.resume ? ' — ' + p.resume : ''), champs.date_ouverture);
+      }
       return res.json({ dossier: { ...versChaines(d), nom_outlook: nomOutlook(d) } });
     }
     const id = +b.id;
@@ -339,6 +353,20 @@ async function traiter(req, res) {
     const etatR = await pont.etatReleves(sql);
     await pont.signalerManques(sql, etatR);
     return res.json({ bilan, releves: etatR });
+  }
+  if (action === 'propositions') {
+    const bilan = await props.importer(sql, b.fichiers);
+    return res.json({ bilan, propositions: await props.compter(sql) });
+  }
+  if (action === 'proposition_ecarter') {
+    const p = await props.marquer(sql, b.cle, 'ecarte', null);
+    return p ? res.json({ ok: true }) : erreur(res, 404, 'Fiche introuvable ou déjà tranchée.');
+  }
+  if (action === 'proposition_fusionner') {
+    const r = await props.fusionner(sql, b.cle, +b.id);
+    if (r.erreur) return erreur(res, 404, r.erreur);
+    await evenement(sql, +b.id, 'note', 'Fiche « ' + r.proposition.intitule + ' » du balayage des mails fusionnée dans ce dossier (adresses reprises)', jour);
+    return res.json({ ok: true });
   }
   if (action === 'mail_rattacher') {
     const r = await pont.rattacherMain(sql, texte(b.mail_id, 500), +b.id);
