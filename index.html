@@ -262,6 +262,16 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 @media (prefers-reduced-motion:reduce){
   .influx{display:none} .gire,.gire-inv,.reacteur,.halo-coeur,.pulse,.segment.allumage{animation:none} .sablier.clignote use{animation:none;opacity:1}
 }
+
+/* ---------- bloc titre commun à PHARE et SUIVI (harmonisé le 22/10/2026) ----------
+   Une seule répartition pour les deux pages : à gauche le titre et sa ligne d'explication,
+   à droite la recherche et sa ligne d'aide, sur la même ligne et alignées par le bas.
+   La recherche ne passe plus sous le titre tant que la fenêtre dépasse 720 points. */
+.tete{flex-wrap:nowrap}
+.tete>div:first-child{flex:1 1 auto;min-width:0}
+.champ{display:block;flex:0 0 clamp(240px,30vw,380px);width:auto}
+.aide{margin:5px 0 0 14px;font-size:11px;color:#6F8396}
+@media (max-width:720px){ .tete{flex-wrap:wrap} .champ{flex:1 1 100%} }
 </style>
 </head>
 <body>
@@ -295,7 +305,8 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
     <div class="tete">
       <div><h1>Suivi des dossiers</h1><p class="mono" id="date-jour"></p></div>
       <label class="champ"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
-        <input type="search" id="recherche" placeholder="Chercher un dossier, une partie…" aria-label="Chercher un dossier"></label>
+        <input type="search" id="recherche" placeholder="Chercher un dossier, une partie…" aria-label="Chercher un dossier" aria-describedby="aide-recherche">
+        <span class="aide" id="aide-recherche">Le cercle se réduit aux dossiers qui répondent.</span></label>
     </div>
     <p class="fete cache" id="fete"></p>
   </div>
