@@ -39,22 +39,39 @@ button{cursor:pointer}
 #appli{flex:1;min-height:0;display:flex;flex-direction:column}
 
 /* ---------- en-tête ---------- */
-.barre{display:flex;align-items:center;gap:22px;padding:12px 0 6px;flex:none}
+/* Harmonisé sur PHARE le 22/10/2026 : marque FIDAL NOTAIRES, commandes en capitales monospace,
+   bloc titre à crochets d'angle avec la recherche à droite. */
+.barre{display:flex;align-items:center;justify-content:space-between;gap:22px;padding:12px 0 2px;flex:none}
 .marque{display:flex;align-items:center;gap:13px}
 .trait{width:3px;height:38px;background:var(--jaune);border-radius:2px}
 .marque b{display:block;font-family:Georgia,serif;font-size:19px;letter-spacing:.14em;font-weight:400;line-height:1.1}
-.marque span{display:block;color:var(--cyan)}
-.champ{position:relative;width:min(320px,100%);margin-left:auto}
-.champ input{width:100%;padding:9px 12px 9px 36px;background:rgba(255,255,255,.05);border:1px solid var(--bord);border-radius:3px;outline:none;color:var(--texte)}
-.champ input:focus{border-color:var(--jaune)}
+.marque span{display:block;font-size:10.5px;letter-spacing:.3em;color:var(--cyan);line-height:1.7}
+.raccourcis{display:flex;gap:4px;flex-wrap:wrap}
+.raccourcis button{display:inline-flex;align-items:center;gap:8px;color:#A8BBCB;padding:7px 12px;border-radius:2px;
+  border:1px solid transparent;background:transparent;white-space:nowrap;
+  font:600 11px/1.5 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;letter-spacing:.14em;text-transform:uppercase}
+.raccourcis button:hover,.raccourcis button:focus-visible{color:#fff;border-color:var(--bord);background:rgba(255,255,255,.05)}
+.raccourcis .fort{color:#FFE38A;border-color:rgba(255,201,0,.45)}
+.raccourcis .fort:hover{color:#FFF3C4;border-color:var(--jaune);background:rgba(255,201,0,.08)}
+.voyant{width:7px;height:7px;border-radius:50%;background:var(--jaune);box-shadow:0 0 7px rgba(255,201,0,.7);flex:none}
+.tete{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;flex-wrap:wrap;padding:8px 0 10px;position:relative;flex:none}
+.tete::before,.tete::after{content:"";position:absolute;width:14px;height:14px;pointer-events:none;border-color:#2A5872;border-style:solid}
+.tete::before{top:0;left:-10px;border-width:1px 0 0 1px}
+.tete::after{bottom:8px;right:-10px;border-width:0 1px 1px 0}
+.tete h1{font-size:clamp(21px,2.4vw,29px);line-height:1.2;margin:0 0 2px}
+.tete p{margin:0;color:var(--cyan)}
+.champ{position:relative;width:min(380px,100%)}
+.champ input{width:100%;padding:12px 14px 12px 42px;font-size:15px;background:rgba(255,255,255,.05);border:1px solid var(--bord);border-radius:2px;outline:none;color:var(--texte)}
+.champ input:focus{border-color:var(--jaune);background:rgba(255,255,255,.1)}
 .champ input::placeholder{color:#7D93A7}
-.champ svg{position:absolute;left:12px;top:10px;width:16px;height:16px;stroke:#7D93A7;fill:none;stroke-width:2}
-.bouton{border:1px solid var(--bord);background:transparent;color:var(--texte);border-radius:3px;padding:8px 14px;white-space:nowrap}
+.champ svg{position:absolute;left:15px;top:12px;width:18px;height:18px;stroke:#7D93A7;fill:none;stroke-width:2}
+.bouton{border:1px solid var(--bord);background:transparent;color:var(--texte);border-radius:2px;padding:8px 14px;white-space:nowrap;
+  font:600 11.5px/1.5 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;letter-spacing:.1em;text-transform:uppercase}
 .bouton:hover{background:rgba(255,255,255,.06)}
 .bouton.fort{background:var(--jaune);border-color:var(--jaune);color:#1B2A3A;font-weight:600}
 .bouton.fort:hover{filter:brightness(1.07)}
 .bouton.danger{color:#FF8FAE;border-color:#6A2340}
-.bouton.petit{padding:4px 10px;font-size:13px}
+.bouton.petit{padding:4px 10px;font-size:10.5px}
 .bouton:disabled{opacity:.45;cursor:default}
 
 /* bandeau des fériés et solennités, à la couleur liturgique */
@@ -107,7 +124,7 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .sablier:hover use{filter:brightness(1.3)}
 @keyframes clignote{0%,100%{opacity:1}50%{opacity:.15}}
 .sablier.clignote use{animation:clignote 1s steps(2,end) infinite}
-.etude{border:1px solid var(--bord);border-radius:6px;padding:8px 10px;margin-top:4px}
+.etude{border:1px solid var(--bord);border-radius:2px;padding:8px 10px;margin-top:4px}
 .etude-ligne{display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.06);font-size:13.5px}
 .etude-ligne:first-child{border-top:0}
 .etude-ligne .qui{flex:1;min-width:0}
@@ -121,7 +138,8 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .etude-vide{color:var(--gris);font-size:13px;padding:4px 0}
 .motif-requis{border:2px solid var(--orange)!important;box-shadow:0 0 0 3px rgba(255,152,45,.18)}
 .coeur-clic{cursor:pointer}
-.compte{font:400 46px/1 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;fill:#CDEFF4}
+.compte{font:400 30px/1 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;letter-spacing:.06em;fill:#CDEFF4}
+.cardinal{font:600 8.5px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;fill:#4E7E95;text-anchor:middle}
 .compte.chaud{fill:#FFB667}
 .indic{font:600 9.5px/1 "Segoe UI",sans-serif;letter-spacing:.22em;fill:#6E93A8}
 .indic-fort{font:600 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.2em;fill:#9FC4D2}
@@ -142,7 +160,7 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .panneau li span{color:#9FB8C8}
 .panneau .petits{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
 .panneau .rapide{margin-top:12px;border-top:1px solid rgba(255,255,255,.08);padding-top:10px}
-.panneau input[type=text]{width:100%;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:3px;outline:none}
+.panneau input[type=text]{width:100%;padding:7px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:2px;outline:none}
 .panneau input[type=text]:focus{border-color:var(--jaune)}
 
 /* pied */
@@ -167,14 +185,14 @@ footer .enveloppe{display:flex;gap:18px;align-items:center;justify-content:space
 .volet .fermer{position:absolute;top:14px;right:18px;border:0;background:none;font-size:26px;color:var(--gris)}
 .volet .sous{color:var(--gris);font-size:13.5px;margin:4px 0 12px}
 .etapes{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 14px}
-.etapes button{border:1px solid var(--bord);background:transparent;color:var(--texte);border-radius:16px;padding:4px 12px;font-size:13.5px}
+.etapes button{border:1px solid var(--bord);background:transparent;color:var(--texte);border-radius:2px;padding:4px 12px;font-size:13.5px}
 .etapes button.actuelle{background:var(--canard);border-color:var(--canard);color:#fff}
 .etapes button:disabled:not(.actuelle){opacity:.4}
 .bloc{border-top:1px solid #1E3650;padding-top:14px;margin-top:14px}
 .bloc h3{font-size:17px;margin-bottom:8px}
 .ligne{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 .volet input[type=text],.volet input[type=email],.volet input[type=date],.volet select,.volet textarea{
-  width:100%;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:4px;outline:none;color:var(--texte)}
+  width:100%;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:2px;outline:none;color:var(--texte)}
 .volet input:focus,.volet select:focus,.volet textarea:focus{border-color:var(--jaune)}
 .volet select option{background:#0C1F33}
 textarea{min-height:60px;resize:vertical}
@@ -194,7 +212,7 @@ textarea{min-height:60px;resize:vertical}
 .petits{display:flex;gap:6px}
 form.fiche label{display:block;margin-top:10px;font-size:13.5px;color:var(--gris)}
 form.fiche label input,form.fiche label select,form.fiche label textarea{margin-top:3px;display:block}
-.volet input[type=number]{width:100%;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:4px;outline:none;color:var(--texte)}
+.volet input[type=number]{width:100%;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid var(--bord);border-radius:2px;outline:none;color:var(--texte)}
 .volet optgroup{background:#0C1F33;color:var(--gris)}
 form.fiche .deux{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 form.fiche .case{display:flex;gap:8px;align-items:center;color:var(--texte)}
@@ -208,16 +226,17 @@ table.classes tr.l{cursor:pointer}
 table.classes tr.l:hover{background:rgba(255,255,255,.04)}
 
 /* fenêtre de confirmation d'étape */
-dialog{border:1px solid var(--bord);background:var(--ardoise);color:var(--texte);border-radius:10px;padding:22px 24px;max-width:420px;width:92%;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+dialog{border:1px solid var(--bord);background:var(--ardoise);color:var(--texte);border-radius:0;padding:22px 24px;max-width:420px;width:92%;box-shadow:0 24px 60px rgba(0,0,0,.6)}
 dialog::backdrop{background:rgba(4,10,18,.7)}
 dialog h3{font-size:19px;margin-bottom:10px}
+dialog,.acces{clip-path:polygon(0 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%)}
 dialog label{display:block;margin-top:10px;font-size:13.5px;color:var(--gris)}
-dialog input,dialog select{display:block;width:100%;margin-top:3px;padding:8px 10px;background:rgba(255,255,255,.07);border:1px solid var(--bord);border-radius:4px;color:var(--texte)}
+dialog input,dialog select{display:block;width:100%;margin-top:3px;padding:8px 10px;background:rgba(255,255,255,.07);border:1px solid var(--bord);border-radius:2px;color:var(--texte)}
 dialog select option{background:var(--ardoise)}
 dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 
 /* dépôt de mail */
-.depot{border:1.5px dashed #2F6E86;border-radius:8px;padding:22px 16px;color:#9FC4D2;text-align:center;background:rgba(109,213,220,.04);margin-top:10px}
+.depot{border:1.5px dashed #2F6E86;border-radius:2px;padding:22px 16px;color:#9FC4D2;text-align:center;background:rgba(109,213,220,.04);margin-top:10px}
 .depot-titre{font-family:Georgia,serif;font-size:16px;color:#CDEFF4}
 .depot-aide{font-size:12.5px;color:var(--gris);margin-top:4px}
 .depot:hover,.depot.survol{border-color:var(--jaune);color:#FFE38A;background:rgba(255,201,0,.06)}
@@ -226,13 +245,13 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 .lu .apercu-mail{color:var(--gris);margin-top:6px;font-style:italic}
 .prerempli{border-left:3px solid var(--cyan)!important}
 #rideau{position:fixed;inset:0;z-index:50;background:rgba(8,22,37,.82);display:flex;align-items:center;justify-content:center;pointer-events:none}
-#rideau div{border:2px dashed var(--jaune);border-radius:12px;padding:40px 60px;font-family:Georgia,serif;font-size:22px;color:#FFE38A}
+#rideau div{border:2px dashed var(--jaune);border-radius:2px;padding:40px 60px;font-family:Georgia,serif;font-size:22px;color:#FFE38A}
 
 /* écran d'accès */
-.acces{max-width:400px;margin:14vh auto;background:var(--ardoise);border:1px solid var(--bord);border-radius:10px;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.acces{max-width:400px;margin:14vh auto;background:var(--ardoise);border:1px solid var(--bord);border-radius:0;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
 .acces h1{font-size:26px;letter-spacing:.14em;margin-bottom:6px}
 .acces p{color:var(--gris);margin:0 0 16px;font-size:14px}
-.acces input{width:100%;padding:11px 13px;background:rgba(255,255,255,.07);border:1px solid var(--bord);border-radius:6px;outline:none;margin-bottom:12px}
+.acces input{width:100%;padding:11px 13px;background:rgba(255,255,255,.07);border:1px solid var(--bord);border-radius:2px;outline:none;margin-bottom:12px}
 .acces input:focus{border-color:var(--jaune)}
 
 @media (max-width:1040px){.panneau{display:none}}
@@ -267,11 +286,16 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 <div id="appli" class="cache">
   <div class="enveloppe" style="flex:none">
     <div class="barre">
-      <div class="marque"><div class="trait"></div><div><b>SUIVI</b><span class="mono" id="date-jour"></span></div></div>
+      <div class="marque"><div class="trait"></div><div><b>FIDAL</b><span>NOTAIRES</span></div></div>
+      <nav class="raccourcis" aria-label="Commandes">
+        <button type="button" class="fort" id="nouveau"><span class="voyant" aria-hidden="true"></span>Nouveau dossier</button>
+        <button type="button" id="verrouiller">Verrouiller</button>
+      </nav>
+    </div>
+    <div class="tete">
+      <div><h1>Suivi des dossiers</h1><p class="mono" id="date-jour"></p></div>
       <label class="champ"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
         <input type="search" id="recherche" placeholder="Chercher un dossier, une partie…" aria-label="Chercher un dossier"></label>
-      <button class="bouton fort" id="nouveau">Nouveau dossier</button>
-      <button class="bouton" id="verrouiller">Verrouiller</button>
     </div>
     <p class="fete cache" id="fete"></p>
   </div>
@@ -597,8 +621,10 @@ function dessiner() {
       if (recherche && cherche.indexOf(recherche) < 0) g.classList.add('eteint');
       if (etat.choisi === d.id) g.classList.add('choisi');
       aPlacer.push({ g: g, d: d, ang: ang, r: r, teinte: teinte, niv: niv, rappelDu: rappelDu, signe: !!d.signature_le, sab: T.sablier(d, etat.aujourdhui), rang: allumage++ });
-      g.addEventListener('mouseenter', function () { montrer(d); });
-      g.addEventListener('focus', function () { montrer(d); });
+      g.addEventListener('mouseenter', function () { garderApercu(); montrer(d); });
+      g.addEventListener('mouseleave', retourATraiter);
+      g.addEventListener('focus', function () { garderApercu(); montrer(d); });
+      g.addEventListener('blur', retourATraiter);
       g.addEventListener('click', function () { ouvrir(d.id); });
       g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(d.id); } });
       carte.appendChild(g);
@@ -711,29 +737,59 @@ function cadrer(liste) {
   $('carte').setAttribute('viewBox', Math.round(x0 - m) + ' ' + Math.round(y0 - m) + ' ' + Math.round(x1 - x0 + 2 * m) + ' ' + Math.round(y1 - y0 + 2 * m));
 }
 
-/* Le cœur : le nombre de choses à traiter aujourd'hui, la date et le signet liturgique */
+/* Le cœur — tableau de bord holographique, repris de PHARE le 22/10/2026 (même grammaire : arcs
+   tournants, graduations, cardinales, crochets d'angle, croix à repères, hexagones, réacteur au centre).
+   Seules des valeurs vraies : le nombre de choses à traiter, à la place de l'heure de PHARE, et la date.
+   L'anneau extérieur garde la couleur liturgique du jour (le signet). */
 function coeur(carte) {
   var O = 'transform-origin:' + CX + 'px ' + CY + 'px';
+  var k = R_COEUR / 158, R = function (v) { return Math.round(v * k); };
+  var arc = function (r, a1, a2) { return arcD(r, a1, a2); };
   carte.appendChild(sv('circle', { cx: CX, cy: CY, r: R_COEUR, fill: 'url(#ecran-hud)', stroke: '#2A5872', 'stroke-width': '1.2' }));
   var g = sv('g', { 'class': 'coeur', 'pointer-events': 'none' }); carte.appendChild(g);
-  g.appendChild(sv('circle', { cx: CX, cy: CY, r: R_COEUR + 10, fill: 'url(#halo-hud)', 'class': 'halo-coeur' }));
-  // l'anneau extérieur du cadran prend la couleur liturgique du jour (le signet)
+  g.appendChild(sv('circle', { cx: CX, cy: CY, r: R(150), fill: 'url(#halo-hud)', 'class': 'halo-coeur' }));
   var ext = sv('g', { 'class': 'gire', style: O + ';--tour:44s' });
-  [0, 90, 180, 270].forEach(function (a) { ext.appendChild(sv('path', { d: arcD(R_COEUR - 10, a + 5, a + 78), fill: 'none', stroke: etat.signet || '#33838B', 'stroke-opacity': '.85', 'stroke-width': '2.2', 'stroke-linecap': 'round' })); });
+  [0, 90, 180, 270].forEach(function (a) { ext.appendChild(sv('path', { d: arc(R(148), a + 5, a + 78), fill: 'none', stroke: etat.signet || '#33838B', 'stroke-opacity': '.85', 'stroke-width': '2.2', 'stroke-linecap': 'round' })); });
   g.appendChild(ext);
   var grad = sv('g', { stroke: '#2F5873' });
-  for (var k = 0; k < 72; k++) {
-    var a = k * 5, longue = k % 9 === 0, p = surCercle(a, R_COEUR - 24), q = surCercle(a, longue ? R_COEUR - 14 : R_COEUR - 19);
+  for (var i = 0; i < 72; i++) {
+    var a = i * 5, longue = i % 9 === 0, p = surCercle(a, R(132)), q = surCercle(a, longue ? R(142) : R(137));
     grad.appendChild(sv('line', { x1: p[0].toFixed(1), y1: p[1].toFixed(1), x2: q[0].toFixed(1), y2: q[1].toFixed(1), 'stroke-width': longue ? '1.6' : '1', 'stroke-opacity': longue ? '.95' : '.45' }));
   }
   g.appendChild(grad);
-  g.appendChild(sv('circle', { cx: CX, cy: CY, r: R_COEUR - 42, fill: 'none', stroke: '#6DD5DC', 'stroke-opacity': '.3', 'stroke-width': '1.2', 'stroke-dasharray': '3 8', 'class': 'gire-inv', style: O + ';--tour:30s' }));
-  g.appendChild(sv('circle', { cx: CX, cy: CY - 46, r: 16, fill: 'url(#reacteur-hud)', 'class': 'reacteur', style: 'transform-origin:' + CX + 'px ' + (CY - 46) + 'px' }));
-  g.appendChild(sv('circle', { cx: CX, cy: CY - 46, r: 4.5, fill: '#DFFBFF' }));
+  [['000', -90], ['090', 0], ['270', 180]].forEach(function (c) {
+    var p = surCercle(c[1], R(118)), t = sv('text', { 'class': 'cardinal', x: p[0].toFixed(1), y: (p[1] + 3).toFixed(1) }); t.textContent = c[0]; g.appendChild(t);
+  });
+  g.appendChild(sv('circle', { cx: CX, cy: CY, r: R(108), fill: 'none', stroke: '#6DD5DC', 'stroke-opacity': '.35', 'stroke-width': '1.2', 'stroke-dasharray': '3 8', 'class': 'gire-inv', style: O + ';--tour:30s' }));
+  var med = sv('g', { 'class': 'gire', style: O + ';--tour:17s' });
+  [[-62, 8], [118, 188]].forEach(function (x) {
+    med.appendChild(sv('path', { d: arc(R(96), x[0], x[1]), fill: 'none', stroke: '#6DD5DC', 'stroke-opacity': '.8', 'stroke-width': '3', 'stroke-linecap': 'round' }));
+    [x[0], x[1]].forEach(function (a) { var p = surCercle(a, R(96)); med.appendChild(sv('circle', { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: '2.6', fill: '#BDEFF4' })); });
+  });
+  g.appendChild(med);
+  [45, 135, 225, 315].forEach(function (a) {
+    g.appendChild(sv('path', { d: arc(R(144), a - 9, a + 9), fill: 'none', stroke: '#6DD5DC', 'stroke-opacity': '.55', 'stroke-width': '2.5' }));
+    var pi = surCercle(a, R(144)), po = surCercle(a, R(154));
+    g.appendChild(sv('line', { x1: pi[0].toFixed(1), y1: pi[1].toFixed(1), x2: po[0].toFixed(1), y2: po[1].toFixed(1), stroke: '#6DD5DC', 'stroke-opacity': '.4', 'stroke-width': '1.2' }));
+  });
+  var croix = sv('g', { stroke: '#4E8EA3', 'stroke-opacity': '.6', 'stroke-width': '1' });
+  [[-1, 0], [1, 0], [0, -1]].forEach(function (d) {   /* le bras du bas est omis : sa place revient au compteur */
+    croix.appendChild(sv('line', { x1: CX + d[0] * R(62), y1: CY + d[1] * R(62), x2: CX + d[0] * R(86), y2: CY + d[1] * R(86) }));
+    for (var j = 1; j <= 3; j++) {
+      var px = CX + d[0] * R(62 + j * 6), py = CY + d[1] * R(62 + j * 6), l = 3.5;
+      croix.appendChild(sv('line', { x1: px - d[1] * l, y1: py - d[0] * l, x2: px + d[1] * l, y2: py + d[0] * l }));
+    }
+  });
+  g.appendChild(croix);
+  var hexa = function (r, rot) { var pts = []; for (var i = 0; i < 6; i++) { var p = surCercle(rot + i * 60, r); pts.push(p[0].toFixed(1) + ',' + p[1].toFixed(1)); } return pts.join(' '); };
+  g.appendChild(sv('polygon', { points: hexa(R(52), -90), fill: 'none', stroke: '#6DD5DC', 'stroke-opacity': '.5', 'stroke-width': '1.3' }));
+  g.appendChild(sv('polygon', { points: hexa(R(36), -60), fill: 'none', stroke: '#33838B', 'stroke-opacity': '.7', 'stroke-width': '1', 'class': 'gire-inv', style: O + ';--tour:38s' }));
+  g.appendChild(sv('circle', { cx: CX, cy: CY, r: R(26), fill: 'url(#reacteur-hud)', 'class': 'reacteur', style: O }));
+  g.appendChild(sv('circle', { cx: CX, cy: CY, r: R(7), fill: '#DFFBFF', 'fill-opacity': '.95' }));
   var n = aTraiter().length;
-  var c = sv('text', { 'class': 'compte' + (n ? ' chaud' : ''), x: CX, y: CY + 22, 'text-anchor': 'middle' }); c.textContent = n;
-  var l1 = sv('text', { 'class': 'indic-fort', x: CX, y: CY + 44, 'text-anchor': 'middle' }); l1.textContent = n ? 'À TRAITER' : 'RIEN À TRAITER';
-  var l2 = sv('text', { 'class': 'indic', x: CX, y: CY + 64, 'text-anchor': 'middle' });
+  var c = sv('text', { 'class': 'compte' + (n ? ' chaud' : ''), x: CX, y: CY + R(80), 'text-anchor': 'middle' }); c.textContent = n;
+  var l1 = sv('text', { 'class': 'indic-fort', x: CX, y: CY + R(100), 'text-anchor': 'middle' }); l1.textContent = n ? 'À TRAITER' : 'RIEN À TRAITER';
+  var l2 = sv('text', { 'class': 'indic', x: CX, y: CY + R(120), 'text-anchor': 'middle' });
   l2.textContent = new Date(etat.aujourdhui + 'T12:00:00Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).toUpperCase();
   g.appendChild(c); g.appendChild(l1); g.appendChild(l2);
   var zone = sv('circle', { 'class': 'coeur-clic', cx: CX, cy: CY, r: R_COEUR, fill: 'transparent', tabindex: '0', role: 'button', 'aria-label': 'Ce qu’il y a à traiter aujourd’hui' });
@@ -820,6 +876,24 @@ function rappelAction(action, id) {
   api('POST', { action: action, rappel_id: id }).then(function () { return etat.ouvert ? ouvrir(etat.ouvert) : null; }).then(charger).catch(alerte);
 }
 $('recherche').addEventListener('input', function () { dessiner(); });
+/* Survol d'un dossier = APERÇU PASSAGER (demande du 22/10/2026) : la fiche du dossier ne s'affiche que
+   tant que la souris est dessus ; dès qu'elle le quitte, le panneau revient de lui-même à « À traiter »
+   (après 0,6 s, pour laisser le temps de passer sur le panneau et d'y cliquer). Tant que la souris est
+   sur le panneau, ou qu'on y tape un rappel, l'aperçu reste. */
+var retourMinuterie = null;
+function garderApercu() { clearTimeout(retourMinuterie); }
+function retourATraiter() {
+  clearTimeout(retourMinuterie);
+  retourMinuterie = setTimeout(function () {
+    var p = $('panneau');
+    if (etat.choisi == null) return;
+    if (p.matches(':hover') || p.contains(document.activeElement)) return;
+    etat.choisi = null; marquerChoisi(); panneauATraiter();
+  }, 600);
+}
+$('panneau').addEventListener('mouseenter', garderApercu);
+$('panneau').addEventListener('mouseleave', retourATraiter);
+$('panneau').addEventListener('focusout', function () { setTimeout(function () { if (!$('panneau').contains(document.activeElement)) retourATraiter(); }, 0); });
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fermerVolet(); });
 
 /* ---------- Repli en liste ---------- */
