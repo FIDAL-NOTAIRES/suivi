@@ -457,7 +457,7 @@ function afficherJour(j) {
 /* ---------- Données ---------- */
 function charger() {
   return api('GET', { action: 'liste' }).then(function (j) {
-    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus; etat.echeances = j.echeances_proches || []; etat.releves = j.releves || null;
+    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus; etat.echeances = j.echeances_proches || []; etat.releves = j.releves || null; etat.propositions = j.propositions || 0;
     dessiner();
   });
 }
@@ -880,6 +880,8 @@ function panneauATraiter() {
   if (l.length) p.appendChild(ul);
   var nAR = etat.releves ? etat.releves.a_rattacher : 0;
   if (nAR) p.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort petit', texte: nAR + (nAR > 1 ? ' mails à rattacher' : ' mail à rattacher'), onclick: ouvrirARattacher })]));
+  var nP = etat.propositions || 0;
+  if (nP) p.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort petit', texte: nP + (nP > 1 ? ' dossiers proposés à valider' : ' dossier proposé à valider'), onclick: ouvrirPropositions })]));
   p.appendChild(blocReleves());
   p.appendChild(el('p', { texte: 'Les relances à faire apparaîtront ici en tête avec le lot suivant du pont.' }));
 }
@@ -1055,7 +1057,7 @@ function formulaire(d, prop) {
   var nouveau = !d; d = d || {};
   if (prop) d = { intitule: prop.intitule, partie1: prop.partie1, partie2: prop.partie2, numero: prop.numero, signature_prevue: prop.signature_prevue,
     adresses: prop.adresses, etude: prop.etude || (prop.collaborateur ? [prop.collaborateur] : []), etude_relances: [], etape: prop.etape,
-    type_dossier: prop.type_dossier, date_ouverture: prop.date_ouverture };
+    type_dossier: prop.type_dossier, date_ouverture: prop.date_ouverture, date_deces: prop.date_deces || '' };
   var f = el('form', { classe: 'fiche' });
   function c(nom) { return f.querySelector('[name="' + nom + '"]'); }
   function champ(lib, nom, type, val, attrs) {
@@ -1165,6 +1167,7 @@ function formulaire(d, prop) {
     if (nouveau) donnees.etape = c('etape').value;
     if (prop && !prop.mail_outlook) donnees.mail = prop.mail;
     if (prop && prop.mail_outlook) donnees.mail_outlook = prop.mail_outlook;   /* mail relevé : rattaché, pas de seconde ligne */
+    if (prop && prop.proposition) { donnees.proposition = prop.proposition; delete donnees.mail; }   /* fiche du balayage : marquée validée */
     api('POST', donnees).then(function (j) { return charger().then(function () { return ouvrir(j.dossier.id); }); }).catch(function (x) { err.textContent = x.message; });
   });
   return f;
@@ -1538,7 +1541,7 @@ function lireReleves() {
   }).then(function (rr) {
     var connus = {}; (rr[1].ids || []).forEach(function (id) { connus[id] = 1; });
     /* les fiches d'essai (« essai-… ») ne sont pas des relevés */
-    var nouvelles = (rr[0].files || []).filter(function (f) { return !connus[f.id] && f.name.indexOf('essai') !== 0; });
+    var nouvelles = (rr[0].files || []).filter(function (f) { return !connus[f.id] && f.name.indexOf('essai') !== 0 && f.name.indexOf('propositions') !== 0; });
     if (!nouvelles.length) return null;
     var fiches = [];
     return nouvelles.reduce(function (p, f) {
@@ -1564,7 +1567,97 @@ function lireReleves() {
     pontAccord = !!err.accord;
     pontMessage = pontAccord ? '' : 'Relevés des mails : ' + err.message;
     panneauSiLibre();
-  }).then(function () { pontEnCours = false; });
+  }).then(function () { pontEnCours = false; }).then(lirePropositions);
+}
+/* ---------- Module de création : fiches proposées par le balayage (22/10/2026) ----------
+   Claude dépose dans le même dossier Drive des fichiers « propositions-NN.json » ; chaque fichier n'est repris
+   qu'une fois. Les fiches attendent ensuite la décision de JFD, une par une. */
+var propsEnCours = false;
+function lirePropositions() {
+  if (propsEnCours || pontAccord) return Promise.resolve();
+  propsEnCours = true;
+  var q = "name = '" + DOSSIER_RELEVES.replace(/'/g, "\\'") + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+  return chercherDrive(q, 'files(id)', null, 5).then(function (r) {
+    if (!r.files || !r.files.length) return null;
+    var q2 = "'" + r.files[0].id + "' in parents and trashed = false and name contains 'propositions-'";
+    return Promise.all([chercherDrive(q2, 'files(id,name,createdTime)', 'createdTime', 200), api('GET', { action: 'propositions_reprises' })]);
+  }).then(function (rr) {
+    if (!rr) return null;
+    var connus = {}; (rr[1].ids || []).forEach(function (id) { connus[id] = 1; });
+    var nouveaux = (rr[0].files || []).filter(function (f) { return !connus[f.id]; });
+    if (!nouveaux.length) return null;
+    var fichiers = [];
+    return nouveaux.reduce(function (p, f) {
+      return p.then(function () {
+        return lireFichierDrive(f.id).then(function (t) {
+          var c = null; try { c = JSON.parse(t); } catch (e) { c = null; }
+          fichiers.push({ drive_id: f.id, nom: f.name, contenu: c });
+        }).catch(function () { /* repris au prochain passage */ });
+      });
+    }, Promise.resolve()).then(function () {
+      var lots = []; for (var i = 0; i < fichiers.length; i += 3) lots.push(fichiers.slice(i, i + 3));
+      return lots.reduce(function (p, lot) {
+        return p.then(function () { return api('POST', { action: 'propositions', fichiers: lot }).then(function (j) { etat.propositions = j.propositions; }); });
+      }, Promise.resolve()).then(function () { panneauSiLibre(); });
+    });
+  }).catch(function (err) { console.warn('Propositions : ' + err.message); }).then(function () { propsEnCours = false; });
+}
+function propDeFiche(p) {
+  return {
+    intitule: p.intitule, partie1: p.partie1 || '', partie2: p.partie2 || '', numero: p.numero || '', signature_prevue: p.signature_prevue || '',
+    adresses: p.adresses || [], etude: p.etude || [], etape: 'en_cours', type_dossier: p.type_dossier || '',
+    date_ouverture: p.date_ouverture || etat.aujourdhui, date_deces: p.date_deces || '', proposition: p.cle,
+    mail: { objet: 'Fiche proposée par le balayage des mails', expediteur: (p.sources || []).length ? 'Tranches ' + p.sources.join(', ') : 'Balayage', date: p.dernier_mail || '', apercu: [p.resume, p.a_verifier ? 'À vérifier : ' + p.a_verifier : ''].filter(Boolean).join(' — ') }
+  };
+}
+function ouvrirPropositions() {
+  return api('GET', { action: 'propositions' }).then(function (j) {
+    etat.ouvert = null;
+    var v = enteteVolet('Dossiers proposés par le balayage');
+    etat.propositions = j.propositions.length;
+    if (!j.propositions.length) { v.appendChild(el('p', { classe: 'sous', texte: 'Aucune fiche en attente : toutes les propositions ont été tranchées.' })); return; }
+    v.appendChild(el('p', { classe: 'sous', texte: j.propositions.length + ' fiche' + (j.propositions.length > 1 ? 's' : '') + ' à valider, du dernier mail le plus récent au plus ancien. « Valider » crée le dossier et lui apprend les adresses de la fiche.' }));
+    var ouverts = etat.dossiers.filter(function (d) { return actif(d) && d.etape !== 'abandonne' && d.etape !== 'clos'; })
+      .sort(function (a, b) { return a.intitule.localeCompare(b.intitule, 'fr'); });
+    function suite() { return charger().then(ouvrirPropositions); }
+    j.propositions.forEach(function (p) {
+      var t = p.type_dossier ? T.type(p.type_dossier) : null;
+      var details = [el('b', { texte: p.intitule + (p.urgent ? '  — URGENT' : ''), classe: p.urgent ? 'rouge' : '' }),
+        el('span', { classe: 'sous', texte: (t ? T.matiere(t.matiere).nom + ' · ' + t.nom : 'Type à choisir') + (p.numero ? ' — n° ' + p.numero : '') +
+          ' — ouvert le ' + (p.date_ouverture ? fr(p.date_ouverture) : '?') + ', dernier mail le ' + (p.dernier_mail ? fr(p.dernier_mail) : '?') })];
+      if (p.resume) details.push(el('span', { texte: p.resume }));
+      if ((p.adresses || []).length) details.push(el('span', { classe: 'sous', texte: 'Correspondants : ' + p.adresses.join(', ') }));
+      if ((p.etude || []).length) details.push(el('span', { classe: 'sous', texte: 'Étude : ' + p.etude.join(', ') }));
+      if (p.a_verifier) details.push(el('span', { classe: 'alerte', texte: 'À vérifier : ' + p.a_verifier }));
+      if ((p.sources || []).length) details.push(el('span', { classe: 'sous', texte: 'Tranches : ' + p.sources.join(', ') }));
+      var choix = el('select', { 'aria-label': 'Dossier existant' });
+      choix.appendChild(el('option', { value: '', texte: 'Fusionner avec…' }));
+      var proche = meilleurDossier({ dossier_pressenti: p.intitule }, ouverts);
+      ouverts.forEach(function (d) { var o = el('option', { value: String(d.id), texte: d.intitule }); if (proche && d.id === proche.id) o.selected = true; choix.appendChild(o); });
+      var complet = !!(p.type_dossier && p.partie1);
+      v.appendChild(el('section', { classe: 'bloc mail-attente' }, details.concat([
+        el('div', { classe: 'ligne' }, [
+          el('button', { classe: 'bouton fort petit', texte: 'Valider', title: complet ? 'Crée le dossier tel quel' : 'Type ou partie manquant : la fiche s’ouvre pour être complétée', onclick: function () {
+            if (!complet) return nouveauDossier(propDeFiche(p));
+            var x = propDeFiche(p);
+            api('POST', { action: 'creer', intitule: x.intitule, partie1: x.partie1, partie2: x.partie2, numero: x.numero, signature_prevue: x.signature_prevue || null,
+              adresses: x.adresses.join(', '), etude: x.etude, relances: [], type_dossier: x.type_dossier, date_ouverture: x.date_ouverture,
+              date_deces: x.date_deces || null, etape: 'en_cours', proposition: p.cle }).then(suite).catch(alerte);
+          } }),
+          el('button', { classe: 'bouton petit', texte: 'Modifier', onclick: function () { nouveauDossier(propDeFiche(p)); } }),
+          choix,
+          el('button', { classe: 'bouton petit', texte: 'Fusionner', onclick: function () {
+            if (!choix.value) return choix.focus();
+            api('POST', { action: 'proposition_fusionner', cle: p.cle, id: +choix.value }).then(suite).catch(alerte);
+          } }),
+          el('button', { classe: 'bouton petit', texte: 'Écarter', onclick: function () {
+            if (!window.confirm('Écarter « ' + p.intitule + ' » ? La fiche ne sera plus proposée.')) return;
+            api('POST', { action: 'proposition_ecarter', cle: p.cle }).then(suite).catch(alerte);
+          } })
+        ])
+      ])));
+    });
+  }).catch(alerte);
 }
 function panneauSiLibre() { if (!etat.choisi) panneauATraiter(); }
 function heureCourte(iso) { return iso ? new Date(iso).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
