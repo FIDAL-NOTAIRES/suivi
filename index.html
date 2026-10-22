@@ -6,8 +6,6 @@
 <meta name="robots" content="noindex">
 <title>SUIVI — dossiers</title>
 <script src="https://connexion-omega.vercel.app/bandeau.js" defer></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://connexion-omega.vercel.app/acces.js"></script>
 <script src="/calendrier.js"></script>
 <script src="/types.js"></script>
 <script src="/lecture.js"></script>
@@ -1361,30 +1359,95 @@ function bilanMois(classes) {
 /* ---------- Pont provisoire : relevés des mails déposés dans le Drive (arbitrages du 21/10/2026) ----------
    Des tâches programmées Claude lisent la messagerie et déposent une fiche JSON par relevé dans le dossier
    Drive « SUIVI – relevés ». À l'ouverture (puis toutes les 15 minutes), la page lit les fiches nouvelles
-   avec le jeton Drive de la journée (MORNING) et les confie au serveur, qui rattache les mails. */
+   et les confie au serveur, qui rattache les mails.
+   Lecture PAR LE RELAIS (arbitrage du 21/10/2026, le client Google étant plein) : SUIVI ne demande plus
+   lui-même de jeton Google. Il ouvre dans un cadre invisible la page relais.html de MORNING (adresse déjà
+   autorisée), qui lit le Drive à sa place ; si MORNING ne répond pas en 10 s, bascule sur le relais de
+   secours logé dans HISTO. Le jeton ne quitte jamais le relais. Si l'accord Google manque, un encadré
+   « Autoriser la lecture du Drive » ouvre le relais dans une petite fenêtre. */
 var DOSSIER_RELEVES = 'SUIVI – relevés';
-var pontEnCours = false, pontMessage = '';
-function drive(url, jeton) {
-  return fetch('https://www.googleapis.com/drive/v3/' + url, { headers: { Authorization: 'Bearer ' + jeton } }).then(function (r) {
-    if (!r.ok) throw new Error('Drive ' + r.status);
-    return url.indexOf('alt=media') >= 0 ? r.text() : r.json();
+var RELAIS = ['https://connexion-omega.vercel.app/relais.html', 'https://histo-sand.vercel.app/relais.html'];
+var pontEnCours = false, pontMessage = '', pontAccord = false;
+var relaisActif = null, relaisN = 0, relaisAttentes = {}, relaisPrets = [];
+window.addEventListener('message', function (ev) {
+  var m = ev.data;
+  if (!m || !m.fidalRelais) return;
+  if (!RELAIS.some(function (u) { return new URL(u).origin === ev.origin; })) return;
+  if (m.fidalRelais === 'pret') { relaisPrets.slice().forEach(function (f) { f(ev); }); return; }
+  if (m.fidalRelais === 'reponse' && relaisAttentes[m.n]) { var f = relaisAttentes[m.n]; delete relaisAttentes[m.n]; f(m); }
+});
+function attendrePret(source, delai) {
+  return new Promise(function (res) {
+    var fini = false;
+    function f(ev) { if (ev.source === source() && !fini) { fini = true; relaisPrets.splice(relaisPrets.indexOf(f), 1); res(ev); } }
+    relaisPrets.push(f);
+    setTimeout(function () { if (!fini) { fini = true; relaisPrets.splice(relaisPrets.indexOf(f), 1); res(null); } }, delai);
   });
 }
+function ouvrirRelais() {
+  if (relaisActif) return Promise.resolve(relaisActif);
+  return RELAIS.reduce(function (p, url) {
+    return p.then(function (r) {
+      if (r) return r;
+      var cadre = document.createElement('iframe');
+      cadre.src = url; cadre.title = 'relais Drive'; cadre.setAttribute('aria-hidden', 'true'); cadre.tabIndex = -1;
+      cadre.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+      var attente = attendrePret(function () { return cadre.contentWindow; }, 10000);
+      document.body.appendChild(cadre);
+      return attente.then(function (ev) {
+        if (ev) return { cible: cadre.contentWindow, origine: ev.origin, url: url, cadre: cadre };
+        cadre.remove(); return null;
+      });
+    });
+  }, Promise.resolve(null)).then(function (r) {
+    if (!r) throw new Error('relais Drive injoignable (MORNING et HISTO).');
+    relaisActif = r; return r;
+  });
+}
+function appelRelais(op) {
+  return ouvrirRelais().then(function (r) {
+    return new Promise(function (res, rej) {
+      var n = ++relaisN;
+      var minuterie = setTimeout(function () { delete relaisAttentes[n]; rej(new Error('le relais Drive ne répond plus.')); }, 60000);
+      relaisAttentes[n] = function (m) {
+        clearTimeout(minuterie);
+        if (m.ok) return res(m.resultat);
+        var e = new Error(m.erreur || 'erreur du relais'); e.accord = !!m.accord; rej(e);
+      };
+      op.fidalRelais = 'appel'; op.n = n;
+      r.cible.postMessage(op, r.origine);
+    });
+  });
+}
+function autoriserDrive() {
+  var url = (relaisActif && relaisActif.url) || RELAIS[0];
+  var fen = window.open(url + '?fenetre=1', 'relaisDriveFidal', 'width=520,height=440');
+  if (!fen) { pontMessage = 'Relevés des mails : la fenêtre a été bloquée par le navigateur, autorisez les fenêtres pour SUIVI.'; panneauSiLibre(); return; }
+  pontMessage = 'Relevés des mails : accord Google en cours dans la petite fenêtre…'; panneauSiLibre();
+  attendrePret(function () { return fen; }, 180000).then(function (ev) {
+    if (!ev) { pontMessage = 'Relevés des mails : accord Google non donné.'; panneauSiLibre(); return; }
+    var ancien = relaisActif;
+    relaisActif = { cible: fen, origine: ev.origin, url: url, cadre: null };
+    pontAccord = false;
+    lireReleves().then(function () {
+      try { fen.postMessage({ fidalRelais: 'appel', op: 'fermer' }, ev.origin); } catch (e) {}
+      if (ancien && ancien.cadre) ancien.cadre.remove();
+      relaisActif = null;  /* la prochaine lecture repart du cadre invisible, l'accord étant désormais donné */
+    });
+  });
+}
+function chercherDrive(q, fields, orderBy, pageSize) { return appelRelais({ op: 'chercher', q: q, fields: fields, orderBy: orderBy, pageSize: pageSize }); }
+function lireFichierDrive(id) { return appelRelais({ op: 'lire', id: id }); }
 function lireReleves() {
   if (pontEnCours) return Promise.resolve();
-  if (!window.FidalAcces || !window.FidalAcces.jeton) { pontMessage = 'Relevés des mails : connexion Google indisponible.'; panneauSiLibre(); return Promise.resolve(); }
   pontEnCours = true;
-  var jeton;
-  return Promise.resolve(window.FidalAcces.jeton()).then(function (j) {
-    jeton = j;
-    if (!jeton) throw new Error('Drive non connecté : ouvrez la journée dans MORNING.');
-    var q = "name = '" + DOSSIER_RELEVES.replace(/'/g, "\\'") + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
-    return drive('files?fields=files(id)&pageSize=5&q=' + encodeURIComponent(q), jeton);
-  }).then(function (r) {
+  var q = "name = '" + DOSSIER_RELEVES.replace(/'/g, "\\'") + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+  return chercherDrive(q, 'files(id)', null, 5).then(function (r) {
+    pontAccord = false;
     if (!r.files || !r.files.length) throw new Error('dossier Drive « ' + DOSSIER_RELEVES + ' » introuvable.');
-    var q = "'" + r.files[0].id + "' in parents and trashed = false and name contains '.json'";
+    var q2 = "'" + r.files[0].id + "' in parents and trashed = false and name contains '.json'";
     return Promise.all([
-      drive('files?orderBy=createdTime&pageSize=200&fields=files(id,name,createdTime)&q=' + encodeURIComponent(q), jeton),
+      chercherDrive(q2, 'files(id,name,createdTime)', 'createdTime', 200),
       api('GET', { action: 'releves_repris' })
     ]);
   }).then(function (rr) {
@@ -1395,7 +1458,7 @@ function lireReleves() {
     var fiches = [];
     return nouvelles.reduce(function (p, f) {
       return p.then(function () {
-        return drive('files/' + encodeURIComponent(f.id) + '?alt=media', jeton).then(function (t) {
+        return lireFichierDrive(f.id).then(function (t) {
           var c = null; try { c = JSON.parse(t); } catch (e) { c = null; }
           fiches.push({ drive_id: f.id, nom: f.name, contenu: c });
         }).catch(function () { /* fichier momentanément illisible : il sera repris au prochain passage */ });
@@ -1413,12 +1476,21 @@ function lireReleves() {
     pontMessage = total && total.fiches ? 'Dernière reprise : ' + total.fiches + (total.fiches > 1 ? ' relevés, ' : ' relevé, ') + total.rattaches + ' mail' + (total.rattaches > 1 ? 's' : '') + ' rangé' + (total.rattaches > 1 ? 's' : '') + ', ' + total.a_rattacher + ' à rattacher.' : '';
     return charger();
   }).catch(function (err) {
-    pontMessage = 'Relevés des mails : ' + err.message; panneauSiLibre();
+    pontAccord = !!err.accord;
+    pontMessage = pontAccord ? '' : 'Relevés des mails : ' + err.message;
+    panneauSiLibre();
   }).then(function () { pontEnCours = false; });
 }
 function panneauSiLibre() { if (!etat.choisi) panneauATraiter(); }
 function heureCourte(iso) { return iso ? new Date(iso).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
+function encadreAccord() {
+  return el('div', { style: 'border:1px solid var(--orange);border-radius:4px;padding:10px 14px;margin:8px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap' }, [
+    el('span', { texte: 'La lecture des relevés dans le Drive attend votre accord Google.' }),
+    el('button', { classe: 'bouton fort', type: 'button', texte: 'Autoriser la lecture du Drive', onclick: autoriserDrive })
+  ]);
+}
 function blocReleves() {
+  if (pontAccord) return encadreAccord();
   var r = etat.releves, enfants = [];
   if (!r) return el('p', { classe: 'sous', texte: pontMessage || 'Les relevés des mails apparaîtront ici dès la première fiche reprise.' });
   enfants.push(el('span', { texte: r.dernier ? 'Dernier relevé : ' + heureCourte(r.dernier) : 'Aucun relevé reçu pour l’instant.' }));
