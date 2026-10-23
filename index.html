@@ -102,8 +102,40 @@ svg.carte{flex:1 1 auto;min-width:0;height:100%;display:block}
 .eteint{opacity:.13}
 .vide-arc{font:12px "Segoe UI",sans-serif;fill:#5E7A8D}
 .borne{font:600 8.5px/1 ui-monospace,'Cascadia Mono',Menlo,monospace;letter-spacing:.08em;opacity:.8;pointer-events:none}
-.titre-mat{font:400 12px/1 Georgia,serif;letter-spacing:.3em}
-.titre-arc{font-size:9px}
+.titre-mat{font:600 16px/1 Georgia,serif;letter-spacing:.26em;cursor:pointer}
+.titre-arc{font-size:8.5px;cursor:pointer}
+/* ---------- commandes de la roue (22/10/2026) ---------- */
+.ciel{position:relative}
+.commande{display:inline-flex;align-items:center;gap:8px;color:#A8BBCB;padding:6px 11px;border-radius:0;border:1px solid #2A5872;background:rgba(10,28,44,.85);
+  font:600 11px/1.5 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.commande:hover,.commande:focus-visible{color:#fff;border-color:var(--cyan)}
+.commandes-roue{position:absolute;left:0;top:6px;z-index:6;display:flex;gap:8px;align-items:flex-start}
+.filtre{position:relative}
+.filtre summary{list-style:none}
+.filtre summary::-webkit-details-marker{display:none}
+.filtre summary{display:inline-flex;align-items:center;gap:8px;color:#A8BBCB;padding:6px 11px;border:1px solid #2A5872;background:rgba(10,28,44,.85);
+  font:600 11px/1.5 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
+.filtre summary::after{content:"";border:5px solid transparent;border-top-color:currentColor;margin-top:5px}
+.filtre[open] summary::after{border-top-color:transparent;border-bottom-color:currentColor;margin-top:-5px}
+.filtre.actif summary{color:#FFE38A;border-color:rgba(255,201,0,.55)}
+.filtre-liste{position:absolute;top:calc(100% + 4px);left:0;min-width:270px;max-height:55vh;overflow:auto;background:#0E2338;border:1px solid #2A5872;padding:6px 0;box-shadow:0 16px 40px rgba(0,0,0,.45)}
+.filtre-liste label{display:flex;gap:10px;align-items:center;padding:6px 14px;font-size:13.5px;cursor:pointer;margin:0}
+.filtre-liste label:hover{background:rgba(109,213,220,.08)}
+.filtre-liste .nb{margin-left:auto;font:600 12px/1 ui-monospace,Menlo,monospace;color:var(--gris)}
+.filtre-vide{margin:6px 14px;color:var(--gris);font-size:13px}
+.revue{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);z-index:6;display:flex;gap:6px;align-items:stretch}
+.revue .commande{font-size:16px;padding:4px 12px;letter-spacing:0}
+.bandeau-revue{min-width:280px;text-align:center;padding:5px 16px;border:1px solid #2A5872;background:rgba(10,28,44,.9)}
+.bandeau-revue b{display:block;font-family:Georgia,serif;font-weight:400;font-size:15px;color:#EDF6FA}
+.bandeau-revue span{font-size:12px;color:var(--gris)}
+.zone-titre{fill:none;stroke:transparent;cursor:pointer;pointer-events:stroke}
+.legende-cour{font:600 8px/1 ui-monospace,'Cascadia Mono',Menlo,monospace;letter-spacing:.06em;fill:#8FB3C6;paint-order:stroke;stroke:#0A1C2C;stroke-width:3px;pointer-events:none}
+.module.repere .segment,.module.repere .ecusson{animation:clignote .45s steps(2,end) 4}
+.module.repere .cadre-survol{opacity:1}
+@keyframes fondu{from{opacity:.2}to{opacity:1}}
+#roue.fondu{animation:fondu .5s ease-out}
+.panneau li.cible{cursor:pointer}
+.panneau li.cible:hover b{color:#FFE38A}
 .barre-nom{font-family:ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;font-weight:600;letter-spacing:.05em;paint-order:stroke;stroke:#0A1C2C;stroke-width:2.6px;stroke-linejoin:round;pointer-events:none}
 .rouge-fort{color:#FF8FAE;font-weight:600}
 .legende span{white-space:nowrap}
@@ -254,13 +286,22 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 .acces input{width:100%;padding:11px 13px;background:rgba(255,255,255,.07);border:1px solid var(--bord);border-radius:2px;outline:none;margin-bottom:12px}
 .acces input:focus{border-color:var(--jaune)}
 
-@media (max-width:1040px){.panneau{display:none}}
+/* point 18 : fenêtre étroite (de 721 à 1 040 points) — le panneau « À traiter » devient un volet ouvert ou fermé d'un clic ;
+   à l'ouverture la roue glisse à gauche sans changer de taille, retour au centre à la fermeture. Plein écran inchangé. */
+#bascule{display:none}
+@media (max-width:1040px) and (min-width:721px){
+  .panneau{position:absolute;right:0;top:50%;transform:translate(110%,-50%);transition:transform .5s ease;z-index:5;background:#0E2338;max-height:calc(100% - 60px)}
+  .ciel.ouvert .panneau{transform:translate(0,-50%)}
+  svg.carte{transition:transform .5s ease}
+  .ciel.ouvert svg.carte{transform:translateX(-170px)}
+  #bascule{display:inline-flex;position:absolute;right:0;top:6px;z-index:6}
+}
 @media (max-width:720px){
   html,body{height:auto} body{overflow:auto;display:block}
   .ciel{display:none} .repli{display:block} .barre{flex-wrap:wrap} .champ{width:100%;margin-left:0}
 }
 @media (prefers-reduced-motion:reduce){
-  .influx{display:none} .gire,.gire-inv,.reacteur,.halo-coeur,.pulse,.segment.allumage{animation:none} .sablier.clignote use{animation:none;opacity:1}
+  .influx{display:none} svg.carte,.panneau{transition:none!important} .module.repere .segment,.module.repere .ecusson,#roue.fondu{animation:none} .gire,.gire-inv,.reacteur,.halo-coeur,.pulse,.segment.allumage{animation:none} .sablier.clignote use{animation:none;opacity:1}
 }
 
 /* ---------- bloc titre commun à PHARE et SUIVI (harmonisé le 22/10/2026) ----------
@@ -312,8 +353,20 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
   </div>
 
   <div class="enveloppe ciel" id="ciel" style="flex:1">
+    <div class="commandes-roue">
+      <details class="filtre" id="filtre"><summary id="filtre-titre">Collaborateurs</summary><div class="filtre-liste" id="filtre-liste"></div></details>
+      <button type="button" class="commande" id="vue-ensemble" title="Remet la roue, le filtre et le zoom à l’état d’origine (Échap)">Vue d’ensemble</button>
+    </div>
     <svg class="carte" id="carte" viewBox="0 0 1000 700" role="img" aria-label="Les dossiers, rangés par type autour d’un anneau"></svg>
     <aside class="panneau" id="panneau" aria-live="polite"></aside>
+    <button type="button" class="commande" id="bascule" aria-expanded="false" aria-controls="panneau">À traiter</button>
+    <div class="revue cache" id="revue" aria-label="Revue des secteurs">
+      <button type="button" class="commande" id="revue-mat-prec" title="Matière précédente (Maj + flèche gauche)" aria-label="Matière précédente">«</button>
+      <button type="button" class="commande" id="revue-type-prec" title="Type précédent (flèche gauche)" aria-label="Type précédent">‹</button>
+      <div class="bandeau-revue" id="revue-bandeau" aria-live="polite"></div>
+      <button type="button" class="commande" id="revue-type-suiv" title="Type suivant (flèche droite)" aria-label="Type suivant">›</button>
+      <button type="button" class="commande" id="revue-mat-suiv" title="Matière suivante (Maj + flèche droite)" aria-label="Matière suivante">»</button>
+    </div>
   </div>
   <div class="enveloppe repli" id="repli"></div>
 
@@ -504,7 +557,7 @@ function hexa(cx, cy, r) {
    rangés par matière. Chaque dossier a son rayon : il part du centre à l'ouverture et
    s'éloigne jusqu'au bord, qui marque la durée moyenne du type ; sa teinte vire à
    l'orange à l'approche de ce délai. Les signés (formalités) sont au-delà du bord, avec la plume. */
-var R_ANNEAU = 151, R0 = 158, R1 = 302, R_SIGNES = 338, R_MAT = 366;
+var R_ANNEAU = 151, R0 = 158, R1 = 302, R_SIGNES = 338, R_TYPE = 356, R_MAT = 372;
 var GRADUATIONS = [0.25, 0.5, 0.75];
 function rayonDe(part) { return R0 + (R1 - R0) * Math.min(part, 1.04); }
 function melange(c1, c2, k) {
@@ -525,20 +578,173 @@ function secteurs(dossiers) {
   var res = [];
   T.MATIERES.forEach(function (m) {
     T.TYPES.forEach(function (t) {
-      if (t.matiere !== m.id || !par[t.id]) return;
-      var l = par[t.id].slice().sort(function (a, b) { return (a.date_ouverture || '').localeCompare(b.date_ouverture || '') || a.id - b.id; });
+      if (t.matiere !== m.id || !par[t.id] || !par[t.id].length) return;   /* un type sans dossier n'a pas de secteur (point 2) */
+      /* point 6 : classés par date limite, la plus proche en premier dans le sens des aiguilles d'une montre ; les signés ensuite */
+      var l = par[t.id].slice().sort(function (a, b) {
+        var sa = a.signature_le ? 1 : 0, sb = b.signature_le ? 1 : 0;
+        if (sa !== sb) return sa - sb;
+        return (T.delais(a, etat.aujourdhui).fin || '').localeCompare(T.delais(b, etat.aujourdhui).fin || '') || a.id - b.id;
+      });
       res.push({ type: t, matiere: m, tous: l });
     });
   });
   return res;
 }
 
-function dessiner() {
-  var carte = $('carte'); carte.textContent = '';
+/* ---------- Vue : filtre, rotation, zoom, revue (arbitrages oraux du 22/10/2026, points 1 à 18) ---------- */
+etat.vue = { filtre: [], zoom: null, rot: 0, vb: null, viser: null };
+var DUREE_ANIM = 500, ZOOM_MAX = 3.2;
+function mouvementReduit() { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); }
+function adressesCollab(d) { return (d.etude || []).filter(function (a) { return !T.estPartagee(a); }); }
+function filtres(liste) {
+  var f = etat.vue.filtre; if (!f.length) return liste;
+  return liste.filter(function (d) { return adressesCollab(d).some(function (a) { return f.indexOf(a) >= 0; }); });
+}
+function dansZoom(d) {
+  var z = etat.vue.zoom; if (!z) return true;
+  var t = T.type(d.type_dossier);
+  return z.niveau === 'type' ? t.id === z.id : t.matiere === z.id;
+}
+function vueModifiee() { return !!(etat.vue.filtre.length || etat.vue.zoom || Math.abs(etat.vue.rot) > 0.01); }
+function normer(a) { a = ((a % 360) + 540) % 360 - 180; return a; }
+function cible(depuis, vers) { return depuis + normer(vers - depuis); }
+function plage(z) {
+  var g = etat.geo; if (!g || !z) return null;
+  if (z.niveau === 'type') { var l = g.lots.filter(function (x) { return x.lot.type.id === z.id; })[0]; return l ? { a1: l.a1, a2: l.a2, n: l.n } : null; }
+  return g.mats[z.id] || null;
+}
+function vbBase() { var R = R_MAT + 40; return [CX - R, CY - R, 2 * R, 2 * R]; }
+/* point 7 bis et 14 : zoom sur le secteur amené à droite, plus fort quand il y a beaucoup de barres, plafonné */
+function cadrage() {
+  var b = vbBase(), z = etat.vue.zoom, pr = plage(z);
+  if (!pr || pr.a2 - pr.a1 >= 359) return b;
+  var s = pr.a2 - pr.a1, aC = (pr.a1 + pr.a2) / 2 + etat.vue.rot, xs = [], ys = [];
+  for (var k = 0; k <= 12; k++) {
+    var a = aC - s / 2 + s * k / 12;
+    [R_ANNEAU - 12, R_MAT + 34].forEach(function (r) { var p = surCercle(a, r); xs.push(p[0]); ys.push(p[1]); });
+  }
+  var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  var cote = Math.max(x1 - x0, y1 - y0) + 24;
+  var zz = Math.max(1, Math.min(b[2] / cote, 1.35 + 0.08 * pr.n, ZOOM_MAX)), c2 = b[2] / zz;
+  return [(x0 + x1) / 2 - c2 / 2, (y0 + y1) / 2 - c2 / 2, c2, c2];
+}
+/* point 15 : transition d'environ une demi-seconde pour la rotation et le zoom */
+var animEnCours = 0;
+function animer(roue, delta, de, vers) {
+  var carte = $('carte'), id = ++animEnCours;
+  var fixer = function (v) { carte.setAttribute('viewBox', v.map(function (x) { return Math.round(x * 10) / 10; }).join(' ')); };
+  if (mouvementReduit() || (Math.abs(delta) < 0.01 && de.join(' ') === vers.join(' '))) { fixer(vers); return; }
+  var t0 = performance.now();
+  var pas = function (t) {
+    if (id !== animEnCours) return;
+    var k = Math.min(1, (t - t0) / DUREE_ANIM), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    if (Math.abs(delta) >= 0.01) roue.setAttribute('transform', 'rotate(' + (-delta * (1 - e)).toFixed(2) + ' ' + CX + ' ' + CY + ')');
+    fixer(de.map(function (x, i) { return x + (vers[i] - x) * e; }));
+    if (k < 1) requestAnimationFrame(pas); else roue.removeAttribute('transform');
+  };
+  requestAnimationFrame(pas);
+}
+function zoomer(z) { etat.vue.zoom = z; etat.vue.viser = { zoom: true }; dessiner('tourne'); }
+function vueEnsemble() {
+  $('filtre').open = false;
+  if (!vueModifiee()) return;
+  etat.vue.filtre = []; etat.vue.zoom = null; etat.vue.viser = { rot: 0 };
+  dessiner('tourne');
+}
+/* point 8 : un clic sur une ligne « À traiter » amène le dossier à droite et fait clignoter sa barre */
+function allerA(id) {
+  var d = etat.dossiers.filter(function (x) { return x.id === id; })[0];
+  if (!d || !actif(d)) return ouvrir(id);
+  if (!filtres([d]).length) etat.vue.filtre = [];
+  if (!dansZoom(d)) etat.vue.zoom = null;
+  etat.vue.viser = { dossier: id };
+  dessiner('tourne');
+  setTimeout(function () {
+    var m = $('carte').querySelector('.module[data-id="' + id + '"]'); if (!m) return;
+    m.classList.add('repere'); setTimeout(function () { m.classList.remove('repere'); }, 1900);
+  }, mouvementReduit() ? 0 : DUREE_ANIM);
+}
+/* point 16 : mode revue, flèche simple = type suivant, flèche double (Maj + flèche) = matière suivante */
+function revue(sens, niveau) {
+  var z = etat.vue.zoom, g = etat.geo; if (!z || !g || !g.lots.length) return;
+  var l, i;
+  if (niveau === 'type') {
+    l = g.lots.map(function (x) { return { niveau: 'type', id: x.lot.type.id }; });
+    if (z.niveau === 'type') i = l.map(function (x) { return x.id; }).indexOf(z.id);
+    else {
+      var idx = g.lots.map(function (x) { return x.lot.matiere.id; });
+      i = sens > 0 ? idx.indexOf(z.id) - 1 : idx.lastIndexOf(z.id) + 1;
+    }
+  } else {
+    var mats = [];
+    g.lots.forEach(function (x) { if (mats.indexOf(x.lot.matiere.id) < 0) mats.push(x.lot.matiere.id); });
+    l = mats.map(function (m) { return { niveau: 'matiere', id: m }; });
+    i = mats.indexOf(z.niveau === 'matiere' ? z.id : T.type(z.id).matiere);
+  }
+  if (!l.length) return;
+  zoomer(l[(i + sens + l.length * 2) % l.length]);
+}
+function majRevue(lots) {
+  var r = $('revue'), z = etat.vue.zoom;
+  r.classList.toggle('cache', !z);
+  if (!z) return;
+  var concernes = [];
+  lots.forEach(function (l) { if (z.niveau === 'type' ? l.type.id === z.id : l.matiere.id === z.id) concernes = concernes.concat(l.tous); });
+  var enCours = concernes.filter(function (d) { return !d.signature_le; });
+  var depasses = enCours.filter(function (d) { return T.delais(d, etat.aujourdhui).reste < 0; });
+  var nom, delai = '';
+  if (z.niveau === 'type') { var t = T.type(z.id); nom = t.nom; delai = t.mois ? t.mois + ' mois' : t.delai + ' jours'; delai = ' · délai moyen ' + delai; }
+  else nom = T.matiere(z.id).nom;
+  var b = $('revue-bandeau'); b.textContent = '';
+  b.appendChild(el('b', { texte: nom }));
+  b.appendChild(el('span', { texte: enCours.length + ' en cours · ' + depasses.length + ' en dépassement' + delai }));
+}
+function nomFamille(n) { var p = (n || '').trim().split(/\s+/); return sansAccent(p[p.length - 1] || ''); }
+/* points 1 et 5 : filtre par collaborateur, cases à cocher, nombre de dossiers en cours à côté du nom ; rien n'est mémorisé */
+function majFiltre(actifs) {
+  var compte = {};
+  actifs.forEach(function (d) { if (d.signature_le) return; adressesCollab(d).forEach(function (a) { compte[a] = (compte[a] || 0) + 1; }); });
+  etat.vue.filtre.forEach(function (a) { if (!(a in compte)) compte[a] = 0; });
+  var liste = Object.keys(compte).map(function (a) { return { a: a, nom: nomEtude(a), n: compte[a] }; })
+    .sort(function (x, y) { return nomFamille(x.nom).localeCompare(nomFamille(y.nom)) || x.nom.localeCompare(y.nom); });
+  var boite = $('filtre-liste'); boite.textContent = '';
+  if (!liste.length) boite.appendChild(el('p', { classe: 'filtre-vide', texte: 'Aucun collaborateur dans les dossiers ouverts.' }));
+  liste.forEach(function (x) {
+    var c = el('input', { type: 'checkbox' }); c.checked = etat.vue.filtre.indexOf(x.a) >= 0;
+    c.addEventListener('change', function () {
+      var f = etat.vue.filtre.filter(function (a) { return a !== x.a; });
+      if (c.checked) f.push(x.a);
+      etat.vue.filtre = f; dessiner('fondu');
+    });
+    boite.appendChild(el('label', {}, [c, el('span', { texte: x.nom }), el('span', { classe: 'nb', texte: String(x.n) })]));
+  });
+  var n = etat.vue.filtre.length;
+  $('filtre-titre').textContent = n ? 'Collaborateurs · ' + n + (n > 1 ? ' cochés' : ' coché') : 'Collaborateurs';
+  $('filtre').classList.toggle('actif', n > 0);
+}
+function nomComplet(d) {
+  var p = [(d.partie1 || '').toUpperCase(), (d.partie2 || '').toUpperCase()].filter(Boolean).join(' / ');
+  return p && p !== (d.intitule || '').toUpperCase() ? p + ' — ' + d.intitule : (d.intitule || p);
+}
+
+var ALLUMER = true;
+function dessiner(anim) {
+  var carte = $('carte');
+  var avant = { rot: etat.vue.rot, vb: etat.vue.vb };
+  carte.textContent = '';
+  ALLUMER = !etat.dessine; etat.dessine = true;   /* l'allumage des barres ne joue qu'au premier affichage */
   var actifs = etat.dossiers.filter(actif);
   var classes = etat.dossiers.filter(function (d) { return !actif(d); });
+  var vus = filtres(actifs);
   $('n-classes').textContent = classes.length;
-  $('compte-dossiers').textContent = actifs.length + (actifs.length > 1 ? ' dossiers ouverts' : ' dossier ouvert');
+  $('compte-dossiers').textContent = (etat.vue.filtre.length ? vus.length + ' sur ' : '') + actifs.length + (actifs.length > 1 ? ' dossiers ouverts' : ' dossier ouvert');
+
+  var lots = secteurs(vus);
+  var z = etat.vue.zoom;
+  if (z && !lots.some(function (l) { return z.niveau === 'type' ? l.type.id === z.id : l.matiere.id === z.id; })) etat.vue.zoom = z = null;
+  /* points 1 et 12 : le compteur du cœur ne compte que la sélection, ou le secteur zoomé */
+  etat.vueIds = null;
+  if (etat.vue.filtre.length || z) { etat.vueIds = {}; vus.filter(dansZoom).forEach(function (d) { etat.vueIds[d.id] = 1; }); }
 
   var defs = sv('defs'); carte.appendChild(defs);
   defs.innerHTML = '<radialGradient id="halo-hud"><stop offset="0%" stop-color="#33838B" stop-opacity=".5"/><stop offset="68%" stop-color="#0F2238" stop-opacity=".3"/><stop offset="100%" stop-color="#081625" stop-opacity="0"/></radialGradient>' +
@@ -547,21 +753,23 @@ function dessiner() {
     '<radialGradient id="ecran-hud" cx="50%" cy="42%" r="72%"><stop offset="0%" stop-color="#17384F"/><stop offset="62%" stop-color="#102A40"/><stop offset="100%" stop-color="#0A1C2C"/></radialGradient>';
 
   coeur(carte);
-  var lots = secteurs(actifs);
   dessinerRepli(lots);
+  majFiltre(actifs);
+  majRevue(lots);
   if (!lots.length) {
+    etat.geo = null;
     carte.appendChild(sv('circle', { cx: CX, cy: CY, r: R1, fill: 'none', stroke: '#27425B', 'stroke-dasharray': '2 7' }));
     var v = sv('text', { 'class': 'vide-arc', x: CX, y: CY + R1 + 26, 'text-anchor': 'middle' });
-    v.textContent = 'Aucun dossier ouvert — « Nouveau dossier » pour commencer'; carte.appendChild(v);
-    $('carte').setAttribute('viewBox', (CX - R_MAT - 30) + ' ' + (CY - R_MAT - 30) + ' ' + (2 * R_MAT + 60) + ' ' + (2 * R_MAT + 80));
+    v.textContent = etat.vue.filtre.length ? 'Aucun dossier ouvert pour ce choix de collaborateurs' : 'Aucun dossier ouvert — « Nouveau dossier » pour commencer';
+    carte.appendChild(v);
+    etat.vue.vb = vbBase(); animer(null, 0, etat.vue.vb, etat.vue.vb);
     if (etat.choisi == null) panneauATraiter();
     return;
   }
 
   /* largeur de chaque secteur : proportionnelle à ses dossiers, avec un minimum pour que son titre tienne */
-  var rT = R_COEUR + 12;
-  var besoins = lots.map(function (l) { return Math.min(70, ((l.type.court.length + 3) * 6.6 / rT) * 180 / Math.PI + 6); });
-  var total = actifs.length;
+  var besoins = lots.map(function (l) { return Math.min(70, ((l.type.court.length + 4) * 6.4 / R_TYPE) * 180 / Math.PI + 4); });
+  var total = vus.length;
   var spans = lots.map(function (l) { return l.tous.length * 360 / total; });
   if (lots.length === 1) spans = [360];
   else for (var tour = 0; tour < 6; tour++) {
@@ -569,53 +777,78 @@ function dessiner() {
     var somme = spans.reduce(function (a, b) { return a + b; }, 0);
     spans = spans.map(function (x) { return x * 360 / somme; });
   }
-  /* taille des écussons : elle suit l'écart le plus serré au départ des rayons */
-  var pasMin = Math.min.apply(null, spans.map(function (s, i) { return s / lots[i].tous.length; }));
-  var debut = -90 - spans[0] / 2, recherche = sansAccent($('recherche').value.trim());
-  var aPlacer = [], ecussons = [], allumage = 0, matPrec = null, matDebut = 0;
-  var traitsMat = [];
+  var plein = lots.length === 1, marge = plein ? 0 : 0.8;
+  var pasMin = Math.min.apply(null, spans.map(function (s, i) { return (s - 2 * marge) / lots[i].tous.length; }));
+  var debut0 = -90 - spans[0] / 2;
+
+  /* repères de la roue avant rotation : secteurs, matières, angle de chaque dossier */
+  var geo = { lots: [], mats: {}, dossiers: {} }, a = debut0;
+  lots.forEach(function (lot, n) {
+    geo.lots.push({ lot: lot, a1: a, a2: a + spans[n], n: lot.tous.length });
+    var m = geo.mats[lot.matiere.id] || (geo.mats[lot.matiere.id] = { a1: a, a2: a, n: 0 });
+    m.a2 = a + spans[n]; m.n += lot.tous.length;
+    var pas = (spans[n] - 2 * marge) / lot.tous.length;
+    lot.tous.forEach(function (d, i) { geo.dossiers[d.id] = a + marge + pas * (i + 0.5); });
+    a += spans[n];
+  });
+  etat.geo = geo;
+  /* rotation demandée : secteur à droite (point 7), dossier à droite (point 8), retour à l'origine (point 11) */
+  var vis = etat.vue.viser; etat.vue.viser = null;
+  if (vis && vis.dossier != null && geo.dossiers[vis.dossier] != null) etat.vue.rot = cible(avant.rot, -geo.dossiers[vis.dossier]);
+  else if (vis && vis.zoom && !plein) { var pr = plage(etat.vue.zoom); if (pr) etat.vue.rot = cible(avant.rot, -(pr.a1 + pr.a2) / 2); }
+  else if (vis && vis.rot === 0) etat.vue.rot = cible(avant.rot, 0);
+  var rot = etat.vue.rot;
+
+  var roue = sv('g', { id: 'roue' }); carte.appendChild(roue);
+  if (anim === 'fondu' && !mouvementReduit()) roue.setAttribute('class', 'fondu');
+  var debut = debut0 + rot, recherche = sansAccent($('recherche').value.trim());
+  var aPlacer = [], allumage = 0;
 
   lots.forEach(function (lot, n) {
-    var t = lot.type, span = spans[n], a1 = debut + (lots.length > 1 ? 0.8 : 0), a2 = debut + span - (lots.length > 1 ? 0.8 : 0);
-    var plein = lots.length === 1;
-    /* bande du secteur sur l'anneau */
-    var dBande = plein ? 'M' + (CX + R_ANNEAU) + ',' + CY + ' a' + R_ANNEAU + ',' + R_ANNEAU + ' 0 1 1 -' + (2 * R_ANNEAU) + ',0 a' + R_ANNEAU + ',' + R_ANNEAU + ' 0 1 1 ' + (2 * R_ANNEAU) + ',0' : arcD(R_ANNEAU, a1, a2);
-    carte.appendChild(sv('path', { d: dBande, fill: 'none', stroke: t.couleur, 'stroke-opacity': '.85', 'stroke-width': '9' }));
+    var t = lot.type, span = spans[n], a1 = debut + marge, a2 = debut + span - marge;
+    var zoneType = function (noeud) {
+      noeud.addEventListener('click', function (ev) { ev.stopPropagation(); zoomer({ niveau: 'type', id: t.id }); });
+      return noeud;
+    };
+    /* bande du secteur sur l'anneau — un clic dessus fait aussi pivoter et zoomer */
+    var dBande = plein ? cercleD(R_ANNEAU) : arcD(R_ANNEAU, a1, a2);
+    roue.appendChild(sv('path', { d: dBande, fill: 'none', stroke: t.couleur, 'stroke-opacity': '.85', 'stroke-width': '9' }));
     var flux = sv('path', { 'class': 'influx', d: dBande, stroke: '#EAFEFF', 'stroke-opacity': '.45' });
     flux.style.setProperty('--long', Math.round(R_ANNEAU * rad(a2 - a1))); flux.style.setProperty('--vitesse', (4 + lot.tous.length * 0.6).toFixed(1) + 's');
-    carte.appendChild(flux);
+    roue.appendChild(flux);
+    var zb = zoneType(sv('path', { 'class': 'zone-titre', d: dBande, 'stroke-width': '16' }));
+    zb.appendChild(sv('title')).textContent = t.nom + ' : pivoter et zoomer'; roue.appendChild(zb);
     /* graduations (quarts du délai moyen) et bord = délai moyen */
     GRADUATIONS.forEach(function (g) {
       var r = rayonDe(g);
-      carte.appendChild(sv('path', { d: plein ? cercleD(r) : arcD(r, a1, a2), fill: 'none', stroke: t.couleur, 'stroke-opacity': '.16', 'stroke-width': '1', 'stroke-dasharray': '2 5' }));
+      roue.appendChild(sv('path', { d: plein ? cercleD(r) : arcD(r, a1, a2), fill: 'none', stroke: t.couleur, 'stroke-opacity': '.16', 'stroke-width': '1', 'stroke-dasharray': '2 5' }));
     });
-    carte.appendChild(sv('path', { d: plein ? cercleD(R1) : arcD(R1, a1, a2), fill: 'none', stroke: t.couleur, 'stroke-opacity': '.55', 'stroke-width': '1.6' }));
-    /* séparation entre secteurs */
+    roue.appendChild(sv('path', { d: plein ? cercleD(R1) : arcD(R1, a1, a2), fill: 'none', stroke: t.couleur, 'stroke-opacity': '.55', 'stroke-width': '1.6' }));
+    /* point 10 : filet marqué entre matières, filet fin entre types */
     if (!plein) {
-      var s1 = surCercle(debut, R_ANNEAU - 6), s2 = surCercle(debut, R_SIGNES + 14);
-      carte.appendChild(sv('line', { x1: s1[0].toFixed(1), y1: s1[1].toFixed(1), x2: s2[0].toFixed(1), y2: s2[1].toFixed(1), stroke: '#1E3A54', 'stroke-width': '1' }));
+      var prec = lots[(n - 1 + lots.length) % lots.length], entreMat = prec.matiere.id !== lot.matiere.id;
+      var s1 = surCercle(debut, R_ANNEAU - (entreMat ? 10 : 6)), s2 = surCercle(debut, entreMat ? R_MAT + 6 : R_TYPE - 12);
+      roue.appendChild(sv('line', { x1: s1[0].toFixed(1), y1: s1[1].toFixed(1), x2: s2[0].toFixed(1), y2: s2[1].toFixed(1),
+        stroke: entreMat ? '#7FA3B8' : '#2B4A66', 'stroke-opacity': entreMat ? '.75' : '1', 'stroke-width': entreMat ? '2' : '.8' }));
     }
     /* durée moyenne inscrite au bord */
     var duree = lot.tous.length === 1 ? T.delais(lot.tous[0], etat.aujourdhui).duree : null;
     var libBord = t.mois ? t.mois + ' MOIS' : (t.ajustable && duree && duree !== t.delai ? duree : t.delai) + ' J';
     var pb = surCercle((a1 + a2) / 2, R1 + 11);
     var tb = sv('text', { 'class': 'borne', x: pb[0].toFixed(1), y: (pb[1] + 3).toFixed(1), 'text-anchor': 'middle', fill: t.couleur });
-    tb.textContent = libBord; carte.appendChild(tb);
-    ecussons.push({ x: pb[0], y: pb[1], m: 18 });
+    tb.textContent = libBord; roue.appendChild(tb);
 
-    /* titre du secteur, le long de l'anneau, à rebours en bas pour se lire de gauche à droite */
+    /* point 10 : type écrit à l'extérieur, juste sous sa matière, plus petit, en blanc franc ; un clic pivote et zoome (point 7) */
     var milieu = (a1 + a2) / 2, bas = Math.sin(rad(milieu)) > 0.2;
     var b1 = plein ? -150 : a1, b2 = plein ? -30 : a2;
-    var pa = surCercle(bas ? b2 : b1, rT), pz = surCercle(bas ? b1 : b2, rT);
-    var chemin = sv('path', { id: 'titre-' + t.id, fill: 'none', d: 'M' + pa[0].toFixed(1) + ',' + pa[1].toFixed(1) + ' A' + rT + ',' + rT + ' 0 ' + ((b2 - b1) > 180 ? 1 : 0) + ' ' + (bas ? 0 : 1) + ' ' + pz[0].toFixed(1) + ',' + pz[1].toFixed(1) });
-    defs.appendChild(chemin);
-    var tt = sv('text', { 'class': 'titre-arc', fill: t.couleur, dy: bas ? '7' : '0' });
+    var pa = surCercle(bas ? b2 : b1, R_TYPE), pz = surCercle(bas ? b1 : b2, R_TYPE);
+    defs.appendChild(sv('path', { id: 'titre-' + t.id, fill: 'none', d: 'M' + pa[0].toFixed(1) + ',' + pa[1].toFixed(1) + ' A' + R_TYPE + ',' + R_TYPE + ' 0 ' + ((b2 - b1) > 180 ? 1 : 0) + ' ' + (bas ? 0 : 1) + ' ' + pz[0].toFixed(1) + ',' + pz[1].toFixed(1) }));
+    var tt = zoneType(sv('text', { 'class': 'titre-arc', fill: '#FFFFFF', dy: bas ? '7' : '0' }));
     var tp = sv('textPath', { href: '#titre-' + t.id, startOffset: '50%', 'text-anchor': 'middle' });
     tp.textContent = (span < besoins[n] - 2 ? t.court.split(' ')[0] : t.court) + '  ' + lot.tous.length;
-    tt.appendChild(tp); carte.appendChild(tt);
-
-    /* arc de matière, tout à l'extérieur */
-    if (lot.matiere.id !== matPrec) { if (matPrec) traitsMat.push({ m: traitsMat.m, a1: matDebut, a2: debut }); matPrec = lot.matiere.id; matDebut = debut; traitsMat.m = lot.matiere; }
+    tt.appendChild(tp); roue.appendChild(tt);
+    var zt = zoneType(sv('path', { 'class': 'zone-titre', d: plein ? cercleD(R_TYPE - 3) : arcD(R_TYPE - 3, a1, a2), 'stroke-width': '16' }));
+    zt.appendChild(sv('title')).textContent = t.nom + ' : pivoter et zoomer'; roue.appendChild(zt);
 
     /* les dossiers, chacun sur son rayon */
     var pas = (a2 - a1) / lot.tous.length;
@@ -623,11 +856,11 @@ function dessiner() {
       var x = T.delais(d, etat.aujourdhui);
       var ang = a1 + pas * (i + 0.5);
       var r = d.signature_le ? R_SIGNES : rayonDe(x.part);
-      var m = surCercle(ang, r), xm = m[0], ym = m[1];
       var niv = niveau(d), teinte = teinteDe(d, x), rappelDu = d.rappels_echus > 0;
       var g = sv('g', { 'class': 'module', tabindex: '0', role: 'button' });
       g.setAttribute('aria-label', d.intitule + ', ' + t.nom);
       g.dataset.id = d.id;
+      g.appendChild(sv('title')).textContent = nomComplet(d);   /* point 4 : nom complet au survol */
       var cherche = sansAccent([d.intitule, d.partie1, d.partie2, d.numero, d.nom_outlook, t.nom].join(' '));
       if (recherche && cherche.indexOf(recherche) < 0) g.classList.add('eteint');
       if (etat.choisi === d.id) g.classList.add('choisi');
@@ -638,26 +871,44 @@ function dessiner() {
       g.addEventListener('blur', retourATraiter);
       g.addEventListener('click', function () { ouvrir(d.id); });
       g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(d.id); } });
-      carte.appendChild(g);
+      roue.appendChild(g);
     });
     debut += span;
   });
-  traitsMat.push({ m: traitsMat.m, a1: matDebut, a2: debut });
-  traitsMat.forEach(function (tm, i) {
-    var plein = traitsMat.length === 1 && lots.length > 0 && Math.abs(tm.a2 - tm.a1 - 360) < 0.5;
-    var a1 = tm.a1 + 1.5, a2 = tm.a2 - 1.5;
-    carte.appendChild(sv('path', { d: plein ? cercleD(R_MAT) : arcD(R_MAT, a1, a2), fill: 'none', stroke: tm.m.couleur, 'stroke-opacity': '.5', 'stroke-width': '2', 'stroke-linecap': 'round' }));
-    var mil = plein ? -90 : (a1 + a2) / 2, bas = Math.sin(rad(mil)) > 0.2, rr = R_MAT + (bas ? 15 : 8);
-    var c1 = plein ? -130 : a1, c2 = plein ? -50 : a2;
+
+  /* point 10 : matières en capitales plus grandes, hors de l'anneau, dans leur couleur ; un clic pivote et zoome */
+  var mats = [];
+  geo.lots.forEach(function (x) { var last = mats[mats.length - 1]; if (last && last.m.id === x.lot.matiere.id) last.a2 = x.a2; else mats.push({ m: x.lot.matiere, a1: x.a1, a2: x.a2 }); });
+  mats.forEach(function (tm, i) {
+    var pleinM = mats.length === 1 && Math.abs(tm.a2 - tm.a1 - 360) < 0.5;
+    var a1 = tm.a1 + rot + 1.5, a2 = tm.a2 + rot - 1.5;
+    roue.appendChild(sv('path', { d: pleinM ? cercleD(R_MAT) : arcD(R_MAT, a1, a2), fill: 'none', stroke: tm.m.couleur, 'stroke-opacity': '.6', 'stroke-width': '2.4', 'stroke-linecap': 'round' }));
+    var mil = pleinM ? -90 : (a1 + a2) / 2, bas = Math.sin(rad(mil)) > 0.2, rr = R_MAT + (bas ? 21 : 10);
+    var c1 = pleinM ? -135 : a1, c2 = pleinM ? -45 : a2;
     var pa = surCercle(bas ? c2 : c1, rr), pz = surCercle(bas ? c1 : c2, rr);
     defs.appendChild(sv('path', { id: 'mat-' + i, fill: 'none', d: 'M' + pa[0].toFixed(1) + ',' + pa[1].toFixed(1) + ' A' + rr + ',' + rr + ' 0 ' + ((c2 - c1) > 180 ? 1 : 0) + ' ' + (bas ? 0 : 1) + ' ' + pz[0].toFixed(1) + ',' + pz[1].toFixed(1) }));
-    var t = sv('text', { 'class': 'titre-mat', fill: tm.m.couleur });
+    var zm = function (noeud) { noeud.addEventListener('click', function (ev) { ev.stopPropagation(); zoomer({ niveau: 'matiere', id: tm.m.id }); }); return noeud; };
+    var t = zm(sv('text', { 'class': 'titre-mat', fill: tm.m.couleur }));
     var tp = sv('textPath', { href: '#mat-' + i, startOffset: '50%', 'text-anchor': 'middle' });
-    tp.textContent = tm.m.nom.toUpperCase(); t.appendChild(tp); carte.appendChild(t);
+    tp.textContent = tm.m.nom.toUpperCase(); t.appendChild(tp); roue.appendChild(t);
+    var zr = zm(sv('path', { 'class': 'zone-titre', d: pleinM ? cercleD(R_MAT + 12) : arcD(R_MAT + 12, a1, a2), 'stroke-width': '26' }));
+    zr.appendChild(sv('title')).textContent = tm.m.nom + ' : pivoter et zoomer'; roue.appendChild(zr);
   });
+
   poserBarres(aPlacer, Math.max(9, Math.min(16, R_ANNEAU * rad(pasMin) * 0.62)), pasMin);
-  cadrer(aPlacer);
-  setTimeout(function () { carte.querySelectorAll('.segment.allumage').forEach(function (n) { n.classList.remove('allumage'); }); }, 1600);
+
+  /* point 9 : couronnes légendées le long d'un rayon, entre le dernier et le premier secteur */
+  var aL = debut0 + rot;
+  GRADUATIONS.concat([1]).forEach(function (gr) {
+    var p = surCercle(aL, rayonDe(gr));
+    var tx = sv('text', { 'class': 'legende-cour', x: p[0].toFixed(1), y: (p[1] + 3).toFixed(1), 'text-anchor': 'middle' });
+    tx.textContent = gr === 1 ? 'délai' : Math.round(gr * 100) + ' %'; roue.appendChild(tx);
+  });
+
+  var vb = cadrage();
+  etat.vue.vb = vb;
+  animer(roue, anim === 'tourne' ? rot - avant.rot : 0, anim && avant.vb ? avant.vb : vb, vb);
+  if (ALLUMER) setTimeout(function () { carte.querySelectorAll('.segment.allumage').forEach(function (n) { n.classList.remove('allumage'); }); }, 1600);
   if (etat.choisi == null) panneauATraiter();
 }
 function cercleD(r) { return 'M' + (CX + r) + ',' + CY + ' a' + r + ',' + r + ' 0 1 1 -' + (2 * r) + ',0 a' + r + ',' + r + ' 0 1 1 ' + (2 * r) + ',0'; }
@@ -684,10 +935,10 @@ function poserBarres(liste, largeur, pas) {
       var part = (r - R0) / (R1 - R0); return melange(t.couleur, ORANGE, Math.max(0, Math.min(1, (part - 0.5) / 0.5)));
     };
     if (FORME === 'eventail') {
-      var dA = Math.min(pas * 0.42, 14);
+      var dA = Math.max(0.45, Math.min(pas * 0.42, 14));   /* point 3 : largeur automatique, avec un minimum */
       g.appendChild(sv('path', { 'class': 'cadre-survol', d: secteurD(ang - dA - 0.8, ang + dA + 0.8, debutB - 3, fin + 3), fill: 'none', stroke: teinte, 'stroke-width': '1.2' }));
       g.appendChild(sv('path', { 'class': 'ecusson', d: secteurD(ang - dA, ang + dA, debutB, fin), fill: t.couleur, 'fill-opacity': '.07', stroke: t.couleur, 'stroke-opacity': '.35', 'stroke-width': '1' }));
-      var part = sv('path', { 'class': 'segment allumage', d: secteurD(ang - dA, ang + dA, debutB, plein), fill: 'url(#deg-' + e.d.id + ')', opacity: e.signe ? '.5' : '.9', 'pointer-events': 'none', filter: 'url(#lueur)' });
+      var part = sv('path', { 'class': 'segment' + (ALLUMER ? ' allumage' : ''), d: secteurD(ang - dA, ang + dA, debutB, plein), fill: 'url(#deg-' + e.d.id + ')', opacity: e.signe ? '.5' : '.9', 'pointer-events': 'none', filter: 'url(#lueur)' });
       var p0 = surCercle(ang, debutB), p1 = surCercle(ang, R1);
       var deg = sv('linearGradient', { id: 'deg-' + e.d.id, gradientUnits: 'userSpaceOnUse', x1: p0[0].toFixed(1), y1: p0[1].toFixed(1), x2: p1[0].toFixed(1), y2: p1[1].toFixed(1) });
       [[0, couleurA(R0)], [0.5, couleurA(R0 + (R1 - R0) * 0.5)], [1, couleurA(R1)]].forEach(function (st) { deg.appendChild(sv('stop', { offset: st[0], 'stop-color': st[1] })); });
@@ -741,13 +992,6 @@ function poserBarres(liste, largeur, pas) {
     if (e.rappelDu || e.niv) { var pt = surCercle(ang, fin + (e.rappelDu || e.signe || e.sab ? decal - 1 : 9)); g.appendChild(sv('circle', { 'class': 'pulse', cx: pt[0].toFixed(1), cy: pt[1].toFixed(1), r: '3.6', fill: e.niv ? ROUGE : ORANGE, stroke: '#0A1C2C', 'stroke-width': '1.2' })); }
   });
 }
-function cadrer(liste) {
-  var R = R_MAT + 24, x0 = CX - R, x1 = CX + R, y0 = CY - R, y1 = CY + R;
-  liste.forEach(function (e) { var b = e.boite; if (!b) return; x0 = Math.min(x0, b.x0); x1 = Math.max(x1, b.x1); y0 = Math.min(y0, b.y0); y1 = Math.max(y1, b.y1); });
-  var m = 10;
-  $('carte').setAttribute('viewBox', Math.round(x0 - m) + ' ' + Math.round(y0 - m) + ' ' + Math.round(x1 - x0 + 2 * m) + ' ' + Math.round(y1 - y0 + 2 * m));
-}
-
 /* Le cœur — tableau de bord holographique, repris de PHARE le 22/10/2026 (même grammaire : arcs
    tournants, graduations, cardinales, crochets d'angle, croix à repères, hexagones, réacteur au centre).
    Seules des valeurs vraies : le nombre de choses à traiter, à la place de l'heure de PHARE, et la date.
@@ -797,7 +1041,8 @@ function coeur(carte) {
   g.appendChild(sv('polygon', { points: hexa(R(36), -60), fill: 'none', stroke: '#33838B', 'stroke-opacity': '.7', 'stroke-width': '1', 'class': 'gire-inv', style: O + ';--tour:38s' }));
   g.appendChild(sv('circle', { cx: CX, cy: CY, r: R(26), fill: 'url(#reacteur-hud)', 'class': 'reacteur', style: O }));
   g.appendChild(sv('circle', { cx: CX, cy: CY, r: R(7), fill: '#DFFBFF', 'fill-opacity': '.95' }));
-  var n = aTraiter().length;
+  var n = aTraiterVus().length;
+  var bas = $('bascule'); if (bas) bas.textContent = 'À traiter (' + n + ')';
   var c = sv('text', { 'class': 'compte' + (n ? ' chaud' : ''), x: CX, y: CY + R(80), 'text-anchor': 'middle' }); c.textContent = n;
   var l1 = sv('text', { 'class': 'indic-fort', x: CX, y: CY + R(100), 'text-anchor': 'middle' }); l1.textContent = n ? 'À TRAITER' : 'RIEN À TRAITER';
   var l2 = sv('text', { 'class': 'indic', x: CX, y: CY + R(120), 'text-anchor': 'middle' });
@@ -849,33 +1094,31 @@ function montrer(d) {
     el('button', { classe: 'bouton petit', texte: 'Dans 7 jours ouvrés', onclick: function () { poser(7); } })
   ])]));
 }
+function idATraiter(x) { return x.type === 'rappel' ? x.r.dossier_id : x.type === 'echeance' ? x.x.dossier_id : x.d.id; }
+function aTraiterVus() { var l = aTraiter(); return etat.vueIds ? l.filter(function (x) { return etat.vueIds[idATraiter(x)]; }) : l; }
 function panneauATraiter() {
   var p = $('panneau'); p.textContent = '';
-  var l = aTraiter();
-  p.appendChild(el('p', { classe: 'mono haut', style: 'color:' + (l.length ? '#FFB667' : '#6DD5DC'), texte: 'À traiter' }));
+  var l = aTraiterVus();
+  p.appendChild(el('p', { classe: 'mono haut', style: 'color:' + (l.length ? '#FFB667' : '#6DD5DC'), texte: etat.vueIds ? 'À traiter · sélection' : 'À traiter' }));
   p.appendChild(el('h3', { texte: l.length ? l.length + (l.length > 1 ? ' points à traiter' : ' point à traiter') : 'Rien à traiter aujourd’hui' }));
   var ul = el('ul');
+  /* point 8 : un clic sur la ligne amène le dossier à droite de la roue et fait clignoter sa barre ; « Ouvrir » ouvre le dossier */
+  var ligne = function (id, enfants, boutons) {
+    var li = el('li', { classe: 'cible', title: 'Montrer ce dossier sur la roue' }, enfants.concat([el('div', { classe: 'petits' }, [el('button', { classe: 'bouton petit', texte: 'Ouvrir', onclick: function () { ouvrir(id); } })].concat(boutons || []))]));
+    li.addEventListener('click', function (ev) { if (ev.target.closest('button,input')) return; allerA(id); });
+    ul.appendChild(li);
+  };
   l.forEach(function (x) {
-    if (x.type === 'rappel') ul.appendChild(el('li', {}, [
-      el('b', { texte: x.r.intitule, onclick: function () { ouvrir(x.r.dossier_id); } }), el('span', { texte: x.r.texte + ' — dû le ' + fr(x.r.echeance) }),
-      el('div', { classe: 'petits' }, [
-        el('button', { classe: 'bouton petit', texte: 'Fait', onclick: function () { rappelAction('rappel_fait', x.r.id); } }),
-        el('button', { classe: 'bouton petit', texte: 'Reporter', onclick: function () { rappelAction('rappel_reporter', x.r.id); } })
-      ])
-    ]));
-    else if (x.type === 'echeance') ul.appendChild(el('li', {}, [
-      el('b', { texte: x.x.intitule, onclick: function () { ouvrir(x.x.dossier_id); } }),
-      el('span', { classe: x.n < 0 ? 'rouge' : '', texte: x.x.libelle + (x.n < 0 ? ' — échéance dépassée (' + fr(x.x.echeance) + ')' : ' — le ' + fr(x.x.echeance) + (x.n === 0 ? ', aujourd’hui' : ', dans ' + x.n + ' jour' + (x.n > 1 ? 's' : ''))) })
-    ]));
-    else if (x.type === 'sablier') ul.appendChild(el('li', {}, [
-      el('b', { texte: x.d.intitule, onclick: function () { ouvrir(x.d.id); } }),
-      el('span', { classe: 'alerte', texte: 'Date limite dépassée (' + fr(x.fin) + ')' }),
-      el('div', { classe: 'petits' }, [el('button', { classe: 'bouton petit', texte: 'Réajuster', onclick: function () { reporterDelai(x.d); } })])
-    ]));
-    else ul.appendChild(el('li', {}, [
-      el('b', { texte: x.d.intitule, onclick: function () { ouvrir(x.d.id); } }),
-      el('span', { classe: x.type === 'depassee' ? 'rouge' : '', texte: x.type === 'depassee' ? 'Date de signature dépassée (' + fr(x.d.signature_prevue) + ')' : 'Signature le ' + fr(x.d.signature_prevue) + (x.n === 0 ? ', aujourd’hui' : ', dans ' + x.n + ' jour' + (x.n > 1 ? 's' : '')) })
-    ]));
+    if (x.type === 'rappel') ligne(x.r.dossier_id, [el('b', { texte: x.r.intitule }), el('span', { texte: x.r.texte + ' — dû le ' + fr(x.r.echeance) })], [
+      el('button', { classe: 'bouton petit', texte: 'Fait', onclick: function () { rappelAction('rappel_fait', x.r.id); } }),
+      el('button', { classe: 'bouton petit', texte: 'Reporter', onclick: function () { rappelAction('rappel_reporter', x.r.id); } })
+    ]);
+    else if (x.type === 'echeance') ligne(x.x.dossier_id, [el('b', { texte: x.x.intitule }),
+      el('span', { classe: x.n < 0 ? 'rouge' : '', texte: x.x.libelle + (x.n < 0 ? ' — échéance dépassée (' + fr(x.x.echeance) + ')' : ' — le ' + fr(x.x.echeance) + (x.n === 0 ? ', aujourd’hui' : ', dans ' + x.n + ' jour' + (x.n > 1 ? 's' : ''))) })]);
+    else if (x.type === 'sablier') ligne(x.d.id, [el('b', { texte: x.d.intitule }), el('span', { classe: 'alerte', texte: 'Date limite dépassée (' + fr(x.fin) + ')' })],
+      [el('button', { classe: 'bouton petit', texte: 'Réajuster', onclick: function () { reporterDelai(x.d); } })]);
+    else ligne(x.d.id, [el('b', { texte: x.d.intitule }),
+      el('span', { classe: x.type === 'depassee' ? 'rouge' : '', texte: x.type === 'depassee' ? 'Date de signature dépassée (' + fr(x.d.signature_prevue) + ')' : 'Signature le ' + fr(x.d.signature_prevue) + (x.n === 0 ? ', aujourd’hui' : ', dans ' + x.n + ' jour' + (x.n > 1 ? 's' : '')) })]);
   });
   if (l.length) p.appendChild(ul);
   var nAR = etat.releves ? etat.releves.a_rattacher : 0;
@@ -907,7 +1150,37 @@ function retourATraiter() {
 $('panneau').addEventListener('mouseenter', garderApercu);
 $('panneau').addEventListener('mouseleave', retourATraiter);
 $('panneau').addEventListener('focusout', function () { setTimeout(function () { if (!$('panneau').contains(document.activeElement)) retourATraiter(); }, 0); });
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fermerVolet(); });
+/* points 11 et 16 : Échap ferme d'abord le volet ouvert, sinon remet la vue d'ensemble ; flèches = type suivant, Maj + flèches = matière suivante */
+document.addEventListener('keydown', function (e) {
+  var voletOuvert = !$('volet').classList.contains('cache'), dialogue = document.querySelector('dialog[open]');
+  if (e.key === 'Escape') { if (voletOuvert) return fermerVolet(); if (dialogue) return; if ($('filtre').open) { $('filtre').open = false; return; } vueEnsemble(); return; }
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && etat.vue.zoom && !voletOuvert && !dialogue) {
+    var tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+    e.preventDefault(); revue(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 'matiere' : 'type');
+  }
+});
+/* point 11 bis : un clic sur une zone vide remet la vue d'ensemble (sauf s'il ne sert qu'à refermer la liste des collaborateurs) */
+$('carte').addEventListener('click', function (e) {
+  if (e.target.closest('.module,.zone-titre,.titre-arc,.titre-mat,.sablier,.coeur-clic')) return;
+  if ($('filtre').open) { $('filtre').open = false; return; }
+  vueEnsemble();
+});
+$('ciel').addEventListener('click', function (e) {
+  if (e.target !== $('ciel')) return;
+  if ($('filtre').open) { $('filtre').open = false; return; }
+  vueEnsemble();
+});
+document.addEventListener('click', function (e) { if ($('filtre').open && !$('filtre').contains(e.target)) $('filtre').open = false; });
+$('vue-ensemble').addEventListener('click', vueEnsemble);
+$('revue-type-prec').addEventListener('click', function () { revue(-1, 'type'); });
+$('revue-type-suiv').addEventListener('click', function () { revue(1, 'type'); });
+$('revue-mat-prec').addEventListener('click', function () { revue(-1, 'matiere'); });
+$('revue-mat-suiv').addEventListener('click', function () { revue(1, 'matiere'); });
+/* point 18 : fenêtre étroite seulement, le panneau devient un volet ; la roue glisse à gauche à l'ouverture */
+$('bascule').addEventListener('click', function () {
+  var o = $('ciel').classList.toggle('ouvert'); $('bascule').setAttribute('aria-expanded', o ? 'true' : 'false');
+});
 
 /* ---------- Repli en liste ---------- */
 function dessinerRepli(lots) {
