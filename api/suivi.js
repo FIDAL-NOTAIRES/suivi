@@ -1,13 +1,16 @@
 // SUIVI — fonction serveur unique (lot 1, bloc « Étude », lot « pont 1 » : reprise des relevés de mails déposés dans le Drive).
-// GET  /api/suivi?action=etat|liste|dossier&id=…|collaborateurs|releves_repris|a_rattacher|propositions|propositions_reprises
-// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|importer_collaborateurs|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer|releves|mail_rattacher|mail_ignorer|propositions|proposition_ecarter|proposition_fusionner, … }
+// GET  /api/suivi?action=etat|liste|dossier&id=…|collaborateurs|releves_repris|a_rattacher|propositions|propositions_reprises|arbitrages|arbitrages_repris
+// POST /api/suivi  { action: creer|modifier|etape|delai_reporter|importer_collaborateurs|note|rappel|rappel_fait|rappel_reporter|echeance|echeance_faite|echeance_retirer|deposer|supprimer|releves|mail_rattacher|mail_ignorer|propositions|proposition_ecarter|proposition_fusionner|arbitrages|arbitrage_repondre|arbitrage_appliquer, … }
 // Accès : en-tête x-suivi-code comparé à la variable SUIVI_CODE_ADMIN (JFD seul).
+// Lecture des réponses aux arbitrages par Claude : GET ?action=arbitrages_claude&lecture=… (ou en-tête x-suivi-lecture),
+// comparé à la variable SUIVI_CODE_LECTURE ; lecture seule, rien d'autre n'est accessible avec cette clé.
 'use strict';
 const crypto = require('crypto');
 const cal = require('../calendrier.js');
 const types = require('../types.js');
 const pont = require('../releves.js');
 const props = require('../propositions.js');
+const arb = require('../arbitrages.js');
 
 let sqlInjecte = null; // pour les essais
 function db() {
@@ -22,8 +25,8 @@ const MOTIFS_ABANDON = ['Rétractation', 'Condition suspensive non réalisée', 
 const GRACE_JOURS = 30;
 const LIBELLES_ECHEANCE = ['Levée des conditions suspensives', 'Obtention du prêt', 'Date butoir de réitération'];
 
-function codeValide(recu) {
-  const attendu = process.env.SUIVI_CODE_ADMIN || '';
+function codeValide(recu, variable) {
+  const attendu = process.env[variable || 'SUIVI_CODE_ADMIN'] || '';
   if (!attendu || typeof recu !== 'string') return false;
   const a = crypto.createHash('sha256').update(recu).digest();
   const b = crypto.createHash('sha256').update(attendu).digest();
@@ -103,6 +106,15 @@ function versChaines(o) {
 
 async function traiter(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  // Lecture des réponses aux arbitrages par Claude : clé de lecture seule, distincte du code de JFD
+  if (req.method === 'GET' && (req.query || {}).action === 'arbitrages_claude') {
+    if (!process.env.SUIVI_CODE_LECTURE) return erreur(res, 503, 'Lecture non configurée (variable SUIVI_CODE_LECTURE absente).');
+    if (!codeValide(req.headers['x-suivi-lecture'] || (req.query || {}).lecture, 'SUIVI_CODE_LECTURE')) {
+      await new Promise(r => setTimeout(r, sqlInjecte ? 0 : 400));
+      return erreur(res, 401, 'Clé de lecture incorrecte.');
+    }
+    return res.json(await arb.pourClaude(db(), (req.query || {}).depuis));
+  }
   if (!process.env.SUIVI_CODE_ADMIN) return erreur(res, 503, 'Accès non configuré (variable SUIVI_CODE_ADMIN absente).');
   if (!codeValide(req.headers['x-suivi-code'])) {
     await new Promise(r => setTimeout(r, sqlInjecte ? 0 : 400));
@@ -123,7 +135,9 @@ async function traiter(req, res) {
     try { releves = await pont.etatReleves(sql); } catch (e) { releves = null; } // tables du pont pas encore créées
     let propositions = null;
     try { propositions = await props.compter(sql); } catch (e) { propositions = null; } // suivi-7.sql pas encore exécuté
-    return res.json({ aujourdhui: jour, ...l, releves, propositions });
+    let arbitrages = null;
+    try { arbitrages = await arb.compter(sql); } catch (e) { arbitrages = null; } // suivi-8.sql pas encore exécuté
+    return res.json({ aujourdhui: jour, ...l, releves, propositions, arbitrages });
   }
   // Pont provisoire : identifiants Drive des fiches déjà reprises (14 derniers jours)
   if (req.method === 'GET' && action === 'releves_repris') {
@@ -137,6 +151,12 @@ async function traiter(req, res) {
     return res.json({ ids: r.map(x => x.drive_id) });
   }
   if (req.method === 'GET' && action === 'propositions') return res.json({ propositions: await props.lister(sql) });
+  // Arbitrages du balayage (26/10/2026)
+  if (req.method === 'GET' && action === 'arbitrages_repris') {
+    const r = await sql`SELECT drive_id FROM suivi_arbitrage_lot`;
+    return res.json({ ids: r.map(x => x.drive_id) });
+  }
+  if (req.method === 'GET' && action === 'arbitrages') return res.json(await arb.lister(sql));
   if (req.method === 'GET' && action === 'dossier') {
     const id = +q.id;
     const [d] = await sql`SELECT * FROM suivi_dossier WHERE id = ${id}`;
@@ -357,6 +377,18 @@ async function traiter(req, res) {
   if (action === 'propositions') {
     const bilan = await props.importer(sql, b.fichiers);
     return res.json({ bilan, propositions: await props.compter(sql) });
+  }
+  if (action === 'arbitrages') {
+    const bilan = await arb.importer(sql, b.fichiers);
+    return res.json({ bilan, arbitrages: await arb.compter(sql) });
+  }
+  if (action === 'arbitrage_repondre') {
+    const r = await arb.repondre(sql, b.id, texte(b.reponse, 200), b.libre, b.commentaire);
+    return r.erreur ? erreur(res, 400, r.erreur) : res.json(r);
+  }
+  if (action === 'arbitrage_appliquer') {
+    const r = await arb.appliquer(sql, b.id, b.elements, b.garder, b.intitule, jour);
+    return r.erreur ? erreur(res, 400, r.erreur) : res.json(r);
   }
   if (action === 'proposition_ecarter') {
     const p = await props.marquer(sql, b.cle, 'ecarte', null);
