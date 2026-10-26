@@ -285,6 +285,42 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
 .bilan .alerte{color:#FFB667}
 .bilan .rouge{color:#FF8FAE}
 .raccourcis button[aria-busy="true"]{opacity:.6;cursor:progress}
+/* « À trancher » : nouvelles fiches et arbitrages du balayage (26/10/2026) */
+.onglets{display:flex;border-bottom:1px solid var(--bord);margin:8px 0 6px}
+.onglets button{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:9px 14px;color:var(--gris);
+  font:600 11.5px/1.5 ui-monospace,'Cascadia Mono','Segoe UI Mono',Menlo,monospace;letter-spacing:.1em;text-transform:uppercase}
+.onglets button:hover{color:var(--texte)}
+.onglets button[aria-selected="true"]{color:var(--texte);border-bottom-color:var(--jaune)}
+.onglets .n{color:var(--jaune);margin-left:7px}
+.onglets button[aria-selected="false"] .n{color:var(--gris)}
+.arb-titre{font-size:16px;margin-top:22px;color:var(--texte)}
+.arb-titre .n{color:var(--gris);font-weight:400;margin-left:6px}
+.arb-dossiers{list-style:none;margin:8px 0 4px;padding:0}
+.arb-dossiers li{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:4px 0;border-top:1px solid rgba(255,255,255,.05);font-size:13.5px}
+.arb-dossiers li:first-child{border-top:0}
+.arb-dossiers .lieu{flex:none;font-size:12px;color:var(--gris)}
+.arb-dossiers .lieu.ok{color:var(--cyan)}
+.arb-dossiers .lieu.fiche{color:#FFB667}
+.arb-dossiers .lieu.absent{color:#FF8FAE}
+.mail-attente .revoir{color:#FFB667;font-size:12.5px}
+.mail-attente .final{color:var(--cyan)}
+.arb-com{margin-top:8px}
+.arb-autre{display:flex;gap:6px;margin-top:6px}
+.arb-autre input{flex:1}
+.recents{margin-top:22px;font-size:13.5px}
+.recents summary{cursor:pointer;color:var(--gris)}
+.recents ul{list-style:none;margin:8px 0 0;padding:0}
+.recents li{padding:6px 0;border-top:1px solid rgba(255,255,255,.06)}
+.recents li span{display:block;color:var(--gris)}
+.pied-arb{margin-top:22px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#dlg-fusion{max-width:580px}
+#dlg-fusion .lignes{margin-top:6px}
+#dlg-fusion .ligne-f{display:grid;grid-template-columns:22px 1fr;gap:4px 8px;align-items:center;padding:8px 0;border-top:1px solid rgba(255,255,255,.07)}
+#dlg-fusion .ligne-f:first-child{border-top:0}
+#dlg-fusion .ligne-f input[type=radio]{width:16px;height:16px;margin:0;accent-color:var(--jaune)}
+#dlg-fusion .ligne-f .nom{font-size:13.5px}
+#dlg-fusion .ligne-f select{grid-column:2;margin-top:0}
+#dlg-fusion .sous{color:var(--gris);font-size:13px}
 
 /* dépôt de mail */
 .depot{border:1.5px dashed #2F6E86;border-radius:2px;padding:22px 16px;color:#9FC4D2;text-align:center;background:rgba(109,213,220,.04);margin-top:10px}
@@ -428,6 +464,20 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
   </form>
 </dialog>
 
+<dialog id="dlg-fusion" aria-labelledby="dlg-fusion-titre">
+  <form method="dialog">
+    <h3 id="dlg-fusion-titre">Fusionner les dossiers</h3>
+    <p class="sous" id="dlg-fusion-aide"></p>
+    <div class="lignes" id="dlg-fusion-lignes"></div>
+    <label>Intitulé à garder<input type="text" id="dlg-fusion-intitule" maxlength="200" required></label>
+    <div class="erreur" id="dlg-fusion-erreur"></div>
+    <div class="boutons">
+      <button class="bouton" value="annuler" formnovalidate>Annuler</button>
+      <button class="bouton fort" value="valider" id="dlg-fusion-valider">Fusionner</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-etape">
   <form method="dialog">
     <h3 id="dlg-titre"></h3>
@@ -539,7 +589,7 @@ function afficherJour(j) {
 /* ---------- Données ---------- */
 function charger() {
   return api('GET', { action: 'liste' }).then(function (j) {
-    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus; etat.echeances = j.echeances_proches || []; etat.releves = j.releves || null; etat.propositions = j.propositions || 0;
+    etat.aujourdhui = j.aujourdhui; etat.dossiers = j.dossiers; etat.rappels = j.rappels_echus; etat.echeances = j.echeances_proches || []; etat.releves = j.releves || null; etat.propositions = j.propositions || 0; etat.arbitrages = j.arbitrages || 0;
     dessiner();
   });
 }
@@ -1168,8 +1218,9 @@ function panneauATraiter() {
   if (l.length) p.appendChild(ul);
   var nAR = etat.releves ? etat.releves.a_rattacher : 0;
   if (nAR) p.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort petit', texte: nAR + (nAR > 1 ? ' mails à rattacher' : ' mail à rattacher'), onclick: ouvrirARattacher })]));
-  var nP = etat.propositions || 0;
-  if (nP) p.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort petit', texte: nP + (nP > 1 ? ' dossiers proposés à valider' : ' dossier proposé à valider'), onclick: ouvrirPropositions })]));
+  var nT = (etat.propositions || 0) + (etat.arbitrages || 0);
+  if (nT) p.appendChild(el('div', { classe: 'ligne' }, [el('button', { classe: 'bouton fort petit', texte: nT + (nT > 1 ? ' points à trancher' : ' point à trancher'),
+    title: (etat.propositions || 0) + ' nouvelle(s) fiche(s), ' + (etat.arbitrages || 0) + ' arbitrage(s)', onclick: function () { ouvrirATrancher(); } })]));
   p.appendChild(blocReleves());
   p.appendChild(el('p', { texte: 'Les relances à faire apparaîtront ici en tête avec le lot suivant du pont.' }));
 }
@@ -1860,6 +1911,8 @@ function autoriserDrive() {
     });
   });
 }
+/* dans « SUIVI – relevés », tout fichier qui n'est ni un essai, ni un lot de propositions, ni un lot d'arbitrages est un relevé */
+function estReleve(nom) { return nom.indexOf('essai') !== 0 && nom.indexOf('propositions') !== 0 && nom.indexOf('arbitrages') !== 0; }
 function chercherDrive(q, fields, orderBy, pageSize) { return appelRelais({ op: 'chercher', q: q, fields: fields, orderBy: orderBy, pageSize: pageSize }); }
 function lireFichierDrive(id) { return appelRelais({ op: 'lire', id: id }); }
 function lireReleves() {
@@ -1877,7 +1930,7 @@ function lireReleves() {
   }).then(function (rr) {
     var connus = {}; (rr[1].ids || []).forEach(function (id) { connus[id] = 1; });
     /* les fiches d'essai (« essai-… ») ne sont pas des relevés */
-    var nouvelles = (rr[0].files || []).filter(function (f) { return !connus[f.id] && f.name.indexOf('essai') !== 0 && f.name.indexOf('propositions') !== 0; });
+    var nouvelles = (rr[0].files || []).filter(function (f) { return !connus[f.id] && estReleve(f.name); });
     if (!nouvelles.length) return null;
     var fiches = [];
     return nouvelles.reduce(function (p, f) {
@@ -1936,7 +1989,40 @@ function lirePropositions() {
         return p.then(function () { return api('POST', { action: 'propositions', fichiers: lot }).then(function (j) { etat.propositions = j.propositions; }); });
       }, Promise.resolve()).then(function () { panneauSiLibre(); });
     });
-  }).catch(function (err) { console.warn('Propositions : ' + err.message); }).then(function () { propsEnCours = false; });
+  }).catch(function (err) { console.warn('Propositions : ' + err.message); }).then(function () { propsEnCours = false; }).then(lireArbitrages);
+}
+/* ---------- Arbitrages du balayage (26/10/2026) ----------
+   Claude dépose aussi des fichiers « arbitrages-NN.json » : une question par arbitrage, posée par les intitulés
+   des dossiers. Chaque fichier n'est repris qu'une fois ; les réponses attendent JFD dans « À trancher ». */
+var arbsEnCours = false;
+function lireArbitrages() {
+  if (arbsEnCours || pontAccord) return Promise.resolve();
+  arbsEnCours = true;
+  var q = "name = '" + DOSSIER_RELEVES.replace(/'/g, "\\'") + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+  return chercherDrive(q, 'files(id)', null, 5).then(function (r) {
+    if (!r.files || !r.files.length) return null;
+    var q2 = "'" + r.files[0].id + "' in parents and trashed = false and name contains 'arbitrages-'";
+    return Promise.all([chercherDrive(q2, 'files(id,name,createdTime)', 'createdTime', 200), api('GET', { action: 'arbitrages_repris' })]);
+  }).then(function (rr) {
+    if (!rr) return null;
+    var connus = {}; (rr[1].ids || []).forEach(function (id) { connus[id] = 1; });
+    var nouveaux = (rr[0].files || []).filter(function (f) { return !connus[f.id] && f.name.indexOf('arbitrages-') === 0; });
+    if (!nouveaux.length) return null;
+    var fichiers = [];
+    return nouveaux.reduce(function (p, f) {
+      return p.then(function () {
+        return lireFichierDrive(f.id).then(function (t) {
+          var c = null; try { c = JSON.parse(t); } catch (e) { c = null; }
+          fichiers.push({ drive_id: f.id, nom: f.name, contenu: c });
+        }).catch(function () { /* repris au prochain passage */ });
+      });
+    }, Promise.resolve()).then(function () {
+      var lots = []; for (var i = 0; i < fichiers.length; i += 3) lots.push(fichiers.slice(i, i + 3));
+      return lots.reduce(function (p, lot) {
+        return p.then(function () { return api('POST', { action: 'arbitrages', fichiers: lot }).then(function (j) { etat.arbitrages = j.arbitrages; }); });
+      }, Promise.resolve()).then(function () { panneauSiLibre(); });
+    });
+  }).catch(function (err) { console.warn('Arbitrages : ' + err.message); }).then(function () { arbsEnCours = false; });
 }
 function propDeFiche(p) {
   return {
@@ -1946,54 +2032,274 @@ function propDeFiche(p) {
     mail: { objet: 'Fiche proposée par le balayage des mails', expediteur: (p.sources || []).length ? 'Tranches ' + p.sources.join(', ') : 'Balayage', date: p.dernier_mail || '', apercu: [p.resume, p.a_verifier ? 'À vérifier : ' + p.a_verifier : ''].filter(Boolean).join(' — ') }
   };
 }
-function ouvrirPropositions() {
-  return api('GET', { action: 'propositions' }).then(function (j) {
-    etat.ouvert = null;
-    var v = enteteVolet('Dossiers proposés par le balayage');
-    etat.propositions = j.propositions.length;
-    if (!j.propositions.length) { v.appendChild(el('p', { classe: 'sous', texte: 'Aucune fiche en attente : toutes les propositions ont été tranchées.' })); return; }
-    v.appendChild(el('p', { classe: 'sous', texte: j.propositions.length + ' fiche' + (j.propositions.length > 1 ? 's' : '') + ' à valider, du dernier mail le plus récent au plus ancien. « Valider » crée le dossier et lui apprend les adresses de la fiche.' }));
-    var ouverts = etat.dossiers.filter(function (d) { return actif(d) && d.etape !== 'abandonne' && d.etape !== 'clos'; })
-      .sort(function (a, b) { return a.intitule.localeCompare(b.intitule, 'fr'); });
-    function suite() { return charger().then(ouvrirPropositions); }
-    j.propositions.forEach(function (p) {
-      var t = p.type_dossier ? T.type(p.type_dossier) : null;
-      var details = [el('b', { texte: p.intitule + (p.urgent ? '  — URGENT' : ''), classe: p.urgent ? 'rouge' : '' }),
-        el('span', { classe: 'sous', texte: (t ? T.matiere(t.matiere).nom + ' · ' + t.nom : 'Type à choisir') + (p.numero ? ' — n° ' + p.numero : '') +
-          ' — ouvert le ' + (p.date_ouverture ? fr(p.date_ouverture) : '?') + ', dernier mail le ' + (p.dernier_mail ? fr(p.dernier_mail) : '?') })];
-      if (p.resume) details.push(el('span', { texte: p.resume }));
-      if ((p.adresses || []).length) details.push(el('span', { classe: 'sous', texte: 'Correspondants : ' + p.adresses.join(', ') }));
-      if ((p.etude || []).length) details.push(el('span', { classe: 'sous', texte: 'Étude : ' + p.etude.join(', ') }));
-      if (p.a_verifier) details.push(el('span', { classe: 'alerte', texte: 'À vérifier : ' + p.a_verifier }));
-      if ((p.sources || []).length) details.push(el('span', { classe: 'sous', texte: 'Tranches : ' + p.sources.join(', ') }));
-      var choix = el('select', { 'aria-label': 'Dossier existant' });
-      choix.appendChild(el('option', { value: '', texte: 'Fusionner avec…' }));
-      var proche = meilleurDossier({ dossier_pressenti: p.intitule }, ouverts);
-      ouverts.forEach(function (d) { var o = el('option', { value: String(d.id), texte: d.intitule }); if (proche && d.id === proche.id) o.selected = true; choix.appendChild(o); });
-      var complet = !!(p.type_dossier && p.partie1);
-      v.appendChild(el('section', { classe: 'bloc mail-attente' }, details.concat([
-        el('div', { classe: 'ligne' }, [
-          el('button', { classe: 'bouton fort petit', texte: 'Valider', title: complet ? 'Crée le dossier tel quel' : 'Type ou partie manquant : la fiche s’ouvre pour être complétée', onclick: function () {
-            if (!complet) return nouveauDossier(propDeFiche(p));
-            var x = propDeFiche(p);
-            api('POST', { action: 'creer', intitule: x.intitule, partie1: x.partie1, partie2: x.partie2, numero: x.numero, signature_prevue: x.signature_prevue || null,
-              adresses: x.adresses.join(', '), etude: x.etude, relances: [], type_dossier: x.type_dossier, date_ouverture: x.date_ouverture,
-              date_deces: x.date_deces || null, etape: 'en_cours', proposition: p.cle }).then(suite).catch(alerte);
-          } }),
-          el('button', { classe: 'bouton petit', texte: 'Modifier', onclick: function () { nouveauDossier(propDeFiche(p)); } }),
-          choix,
-          el('button', { classe: 'bouton petit', texte: 'Fusionner', onclick: function () {
-            if (!choix.value) return choix.focus();
-            api('POST', { action: 'proposition_fusionner', cle: p.cle, id: +choix.value }).then(suite).catch(alerte);
-          } }),
-          el('button', { classe: 'bouton petit', texte: 'Écarter', onclick: function () {
-            if (!window.confirm('Écarter « ' + p.intitule + ' » ? La fiche ne sera plus proposée.')) return;
-            api('POST', { action: 'proposition_ecarter', cle: p.cle }).then(suite).catch(alerte);
-          } })
-        ])
-      ])));
+/* Volet « À trancher » (arbitrage du 26/10/2026) : un seul volet, deux onglets, un seul compteur */
+function ouvrirPropositions() { return ouvrirATrancher('fiches'); }
+function ouvrirATrancher(onglet) {
+  return Promise.all([
+    api('GET', { action: 'propositions' }),
+    api('GET', { action: 'arbitrages' }).catch(function () { return null; })   /* suivi-8.sql pas encore exécuté */
+  ]).then(function (rr) {
+    var jp = rr[0], ja = rr[1];
+    etat.ouvert = null; etat.listeProps = jp.propositions;
+    var nF = jp.propositions.length, nA = ja ? ja.a_trancher.length + ja.a_appliquer.length : 0;
+    etat.propositions = nF; etat.arbitrages = nA;
+    if (onglet !== 'fiches' && onglet !== 'arbitrages') onglet = nF || !nA ? 'fiches' : 'arbitrages';
+    var v = enteteVolet('À trancher');
+    var corps = el('div');
+    var boutons = {};
+    function montrer(o) {
+      onglet = o; etat.ongletATrancher = o;
+      ['fiches', 'arbitrages'].forEach(function (k) { boutons[k].setAttribute('aria-selected', String(k === o)); boutons[k].tabIndex = k === o ? 0 : -1; });
+      corps.textContent = '';
+      if (o === 'fiches') remplirFiches(corps, jp.propositions); else remplirArbitrages(corps, ja);
+    }
+    var barre = el('div', { classe: 'onglets', role: 'tablist', 'aria-label': 'Ce qui attend votre décision' });
+    [['fiches', 'Nouvelles fiches', nF], ['arbitrages', 'Arbitrages', nA]].forEach(function (x) {
+      boutons[x[0]] = el('button', { type: 'button', role: 'tab', onclick: function () { montrer(x[0]); } }, [x[1], el('span', { classe: 'n', texte: String(x[2]) })]);
+      barre.appendChild(boutons[x[0]]);
     });
+    barre.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
+      var o = onglet === 'fiches' ? 'arbitrages' : 'fiches'; montrer(o); boutons[o].focus();
+    });
+    v.appendChild(barre); v.appendChild(corps);
+    montrer(onglet);
   }).catch(alerte);
+}
+function rouvrirATrancher() { return charger().then(function () { return ouvrirATrancher(etat.ongletATrancher); }); }
+function dossiersOuverts() {
+  return etat.dossiers.filter(function (d) { return actif(d) && d.etape !== 'abandonne' && d.etape !== 'clos'; })
+    .sort(function (a, b) { return a.intitule.localeCompare(b.intitule, 'fr'); });
+}
+function remplirFiches(v, propositions) {
+  if (!propositions.length) { v.appendChild(el('p', { classe: 'sous', texte: 'Aucune fiche en attente : toutes les propositions ont été tranchées.' })); return; }
+  v.appendChild(el('p', { classe: 'sous', texte: propositions.length + ' fiche' + (propositions.length > 1 ? 's' : '') + ' à valider, du dernier mail le plus récent au plus ancien. « Valider » crée le dossier et lui apprend les adresses de la fiche.' }));
+  var ouverts = dossiersOuverts();
+  var suite = rouvrirATrancher;
+  propositions.forEach(function (p) {
+    var t = p.type_dossier ? T.type(p.type_dossier) : null;
+    var details = [el('b', { texte: p.intitule + (p.urgent ? '  — URGENT' : ''), classe: p.urgent ? 'rouge' : '' }),
+      el('span', { classe: 'sous', texte: (t ? T.matiere(t.matiere).nom + ' · ' + t.nom : 'Type à choisir') + (p.numero ? ' — n° ' + p.numero : '') +
+        ' — ouvert le ' + (p.date_ouverture ? fr(p.date_ouverture) : '?') + ', dernier mail le ' + (p.dernier_mail ? fr(p.dernier_mail) : '?') })];
+    if (p.resume) details.push(el('span', { texte: p.resume }));
+    if ((p.adresses || []).length) details.push(el('span', { classe: 'sous', texte: 'Correspondants : ' + p.adresses.join(', ') }));
+    if ((p.etude || []).length) details.push(el('span', { classe: 'sous', texte: 'Étude : ' + p.etude.join(', ') }));
+    if (p.a_verifier) details.push(el('span', { classe: 'alerte', texte: 'À vérifier : ' + p.a_verifier }));
+    if ((p.sources || []).length) details.push(el('span', { classe: 'sous', texte: 'Tranches : ' + p.sources.join(', ') }));
+    var choix = el('select', { 'aria-label': 'Dossier existant' });
+    choix.appendChild(el('option', { value: '', texte: 'Fusionner avec…' }));
+    var proche = meilleurDossier({ dossier_pressenti: p.intitule }, ouverts);
+    ouverts.forEach(function (d) { var o = el('option', { value: String(d.id), texte: d.intitule }); if (proche && d.id === proche.id) o.selected = true; choix.appendChild(o); });
+    var complet = !!(p.type_dossier && p.partie1);
+    v.appendChild(el('section', { classe: 'bloc mail-attente' }, details.concat([
+      el('div', { classe: 'ligne' }, [
+        el('button', { classe: 'bouton fort petit', texte: 'Valider', title: complet ? 'Crée le dossier tel quel' : 'Type ou partie manquant : la fiche s’ouvre pour être complétée', onclick: function () {
+          if (!complet) return nouveauDossier(propDeFiche(p));
+          var x = propDeFiche(p);
+          api('POST', { action: 'creer', intitule: x.intitule, partie1: x.partie1, partie2: x.partie2, numero: x.numero, signature_prevue: x.signature_prevue || null,
+            adresses: x.adresses.join(', '), etude: x.etude, relances: [], type_dossier: x.type_dossier, date_ouverture: x.date_ouverture,
+            date_deces: x.date_deces || null, etape: 'en_cours', proposition: p.cle }).then(suite).catch(alerte);
+        } }),
+        el('button', { classe: 'bouton petit', texte: 'Modifier', onclick: function () { nouveauDossier(propDeFiche(p)); } }),
+        choix,
+        el('button', { classe: 'bouton petit', texte: 'Fusionner', onclick: function () {
+          if (!choix.value) return choix.focus();
+          api('POST', { action: 'proposition_fusionner', cle: p.cle, id: +choix.value }).then(suite).catch(alerte);
+        } }),
+        el('button', { classe: 'bouton petit', texte: 'Écarter', onclick: function () {
+          if (!window.confirm('Écarter « ' + p.intitule + ' » ? La fiche ne sera plus proposée.')) return;
+          api('POST', { action: 'proposition_ecarter', cle: p.cle }).then(suite).catch(alerte);
+        } })
+      ])
+    ])));
+  });
+}
+
+/* ----- Onglet « Arbitrages » ----- */
+function lieuDossier(x) {
+  if (x.sorte === 'dossier') return { classe: 'ok', texte: x.intitule_actuel && sansAccent(x.intitule_actuel) !== sansAccent(x.intitule) ? 'dans SUIVI : « ' + x.intitule_actuel + ' »' : 'dans SUIVI' };
+  if (x.sorte === 'proposition') return { classe: 'fiche', texte: 'fiche proposée, pas encore validée' };
+  return { classe: 'absent', texte: x.ecartee ? 'fiche écartée' : 'pas encore dans SUIVI' };
+}
+function listeDossiersArb(a) {
+  var ul = el('ul', { classe: 'arb-dossiers' });
+  (a.situation || []).forEach(function (x) {
+    var l = lieuDossier(x);
+    ul.appendChild(el('li', null, [el('span', { texte: x.intitule }), el('span', { classe: 'lieu ' + l.classe, texte: l.texte })]));
+  });
+  return ul;
+}
+function nbReconnus(a) { return (a.situation || []).filter(function (x) { return x.sorte; }).length; }
+function repondreArb(a, reponse, libre, commentaire) {
+  return api('POST', { action: 'arbitrage_repondre', id: a.id, reponse: reponse, libre: libre || null, commentaire: commentaire || null }).then(function (j) {
+    if (reponse === 'meme') {
+      /* « Même dossier » : l'écran de fusion s'ouvre aussitôt ; si un dossier manque, la réponse est seulement enregistrée */
+      if (nbReconnus(a) >= 2) return rouvrirATrancher().then(function () { ouvrirFusion(Object.assign({}, a, j.arbitrage, { situation: a.situation })); });
+      confirmerEnregistrement('RÉPONSE ENREGISTRÉE');
+      window.alert('Réponse enregistrée. Un des dossiers n’est pas encore dans SUIVI : la fusion sera préparée au lot suivant. Vous pouvez aussi la faire maintenant depuis « Tranchés, à appliquer ».');
+      return rouvrirATrancher();
+    }
+    confirmerEnregistrement(reponse === 'a_revoir' ? 'GARDÉ POUR PLUS TARD' : 'RÉPONSE ENREGISTRÉE');
+    return rouvrirATrancher();
+  }).catch(alerte);
+}
+function carteQuestion(a) {
+  var details = [el('b', { texte: a.question })];
+  if (a.etat === 'a_revoir') details.push(el('span', { classe: 'revoir', texte: 'Mis de côté « à revoir » le ' + fr((a.repondu_le || '').slice(0, 10)) }));
+  if (a.contexte) details.push(el('span', { texte: a.contexte }));
+  if ((a.situation || []).length) details.push(listeDossiersArb(a));
+  var com = el('input', { type: 'text', classe: 'arb-com', maxlength: '500', placeholder: 'Commentaire (facultatif)', 'aria-label': 'Commentaire' });
+  if (a.commentaire) com.value = a.commentaire;
+  var ligne = el('div', { classe: 'ligne' });
+  var autre = null;
+  if (a.nature === 'meme_dossier') {
+    ligne.appendChild(el('button', { classe: 'bouton fort petit', texte: 'Même dossier', onclick: function () { repondreArb(a, 'meme', null, com.value); } }));
+    ligne.appendChild(el('button', { classe: 'bouton petit', texte: 'Dossiers distincts', onclick: function () { repondreArb(a, 'distincts', null, com.value); } }));
+  } else {
+    (a.reponses || []).forEach(function (r) {
+      ligne.appendChild(el('button', { classe: 'bouton petit', texte: r, onclick: function () { repondreArb(a, r, null, com.value); } }));
+    });
+    var champ = el('input', { type: 'text', maxlength: '300', placeholder: 'Votre réponse', 'aria-label': 'Autre réponse' });
+    autre = el('div', { classe: 'arb-autre cache' }, [champ, el('button', { classe: 'bouton fort petit', texte: 'Enregistrer', onclick: function () {
+      if (!champ.value.trim()) return champ.focus();
+      repondreArb(a, 'autre', champ.value, com.value);
+    } })]);
+    champ.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); autre.querySelector('button').click(); } });
+    ligne.appendChild(el('button', { classe: 'bouton petit', texte: 'Autre…', onclick: function () { autre.classList.remove('cache'); champ.focus(); } }));
+  }
+  if (a.etat !== 'a_revoir') ligne.appendChild(el('button', { classe: 'bouton petit', texte: 'À revoir', title: 'Garder la question pour plus tard', onclick: function () { repondreArb(a, 'a_revoir', null, com.value); } }));
+  return el('section', { classe: 'bloc mail-attente' }, details.concat([com, ligne, autre]));
+}
+function carteAAppliquer(a) {
+  var titre = a.nature === 'a_appliquer'
+    ? (a.operation === 'renommage' ? 'Renommage décidé' : 'Fusion décidée') + (a.decide_le ? ' le ' + fr(a.decide_le) : '')
+    : 'Même dossier — répondu le ' + fr((a.repondu_le || '').slice(0, 10));
+  var details = [el('b', { texte: titre })];
+  if (a.nature === 'a_appliquer' && a.question && a.question !== 'Fusion décidée' && a.question !== 'Renommage décidé') details.push(el('span', { texte: a.question }));
+  if (a.nature !== 'a_appliquer') details.push(el('span', { texte: a.question }));
+  if (a.contexte) details.push(el('span', { classe: 'sous', texte: a.contexte }));
+  details.push(listeDossiersArb(a));
+  if (a.intitule_final) details.push(el('span', { classe: 'final', texte: (a.operation === 'renommage' ? 'Nouvel intitulé : ' : 'Intitulé à garder : ') + a.intitule_final }));
+  if (a.commentaire) details.push(el('span', { classe: 'sous', texte: 'Commentaire : ' + a.commentaire }));
+  var besoin = a.operation === 'renommage' ? 1 : 2;
+  if (nbReconnus(a) < besoin) details.push(el('span', { classe: 'alerte', texte: 'Un dossier n’est pas reconnu dans SUIVI : choisissez-le dans l’écran d’application, ou laissez la décision, elle sera reprise au lot suivant.' }));
+  return el('section', { classe: 'bloc mail-attente' }, details.concat([el('div', { classe: 'ligne' }, [
+    el('button', { classe: 'bouton fort petit', texte: 'Appliquer', onclick: function () { ouvrirFusion(a); } })
+  ])]));
+}
+function remplirArbitrages(v, ja) {
+  if (!ja) { v.appendChild(el('p', { classe: 'sous', texte: 'Les arbitrages ne sont pas encore disponibles : le script suivi-8.sql n’a pas été exécuté dans Neon.' })); return; }
+  if (!ja.a_trancher.length && !ja.a_appliquer.length) v.appendChild(el('p', { classe: 'sous', texte: 'Aucun arbitrage en attente : tout est tranché et appliqué.' }));
+  if (ja.a_trancher.length) {
+    v.appendChild(el('h3', { classe: 'arb-titre' }, ['Questions à trancher', el('span', { classe: 'n', texte: String(ja.a_trancher.length) })]));
+    v.appendChild(el('p', { classe: 'sous', texte: 'Une question par arbitrage. « À revoir » la garde dans la liste, en bas.' }));
+    ja.a_trancher.forEach(function (a) { v.appendChild(carteQuestion(a)); });
+  }
+  if (ja.a_appliquer.length) {
+    v.appendChild(el('h3', { classe: 'arb-titre' }, ['Tranchés, à appliquer', el('span', { classe: 'n', texte: String(ja.a_appliquer.length) })]));
+    v.appendChild(el('p', { classe: 'sous', texte: 'Décisions prises mais pas encore faites dans SUIVI. « Appliquer » ouvre l’écran de fusion ou de renommage.' }));
+    ja.a_appliquer.forEach(function (a) { v.appendChild(carteAAppliquer(a)); });
+  }
+  if (ja.recents.length) {
+    var ul = el('ul');
+    ja.recents.forEach(function (a) {
+      ul.appendChild(el('li', null, [el('b', { texte: a.question + ((a.dossiers || []).length ? ' — ' + a.dossiers.join(' / ') : '') }),
+        el('span', { texte: libelleReponseArb(a) + (a.commentaire ? ' — ' + a.commentaire : '') + ' (' + fr(String(a.applique_le || a.repondu_le || '').slice(0, 10)) + ')' })]));
+    });
+    v.appendChild(el('details', { classe: 'recents' }, [el('summary', { texte: 'Réponses des 30 derniers jours (' + ja.recents.length + ')' }), ul]));
+  }
+  v.appendChild(el('div', { classe: 'pied-arb' }, [
+    el('button', { classe: 'bouton petit', texte: 'Copier pour Claude', title: 'En secours : copie vos réponses, à coller dans la conversation', onclick: function () { copierPourClaude(ja); } }),
+    el('span', { classe: 'sous', texte: 'Claude relit vos réponses lui-même ; ce bouton sert en secours.' })
+  ]));
+}
+function libelleReponseArb(a) {
+  if (a.etat === 'a_revoir') return 'À revoir';
+  if (a.etat === 'applique') return 'Appliqué' + (a.applique_detail ? ' : ' + a.applique_detail : '');
+  if (a.reponse === 'meme') return 'Même dossier';
+  if (a.reponse === 'distincts') return 'Dossiers distincts';
+  if (a.reponse === 'autre') return 'Autre : ' + (a.reponse_libre || '');
+  return a.reponse || '';
+}
+function copierPourClaude(ja) {
+  var l = ja.recents.concat(ja.a_appliquer.filter(function (a) { return a.nature === 'meme_dossier'; }))
+    .concat(ja.a_trancher.filter(function (a) { return a.etat === 'a_revoir'; }));
+  var texte = l.length ? 'Réponses aux arbitrages du balayage, saisies dans SUIVI :\n' + l.map(function (a) {
+    return '- [' + a.id + '] ' + a.question + ((a.dossiers || []).length ? ' (' + a.dossiers.join(' / ') + ')' : '') + ' → ' + libelleReponseArb(a) +
+      (a.commentaire ? ' — commentaire : ' + a.commentaire : '') + ' (' + String(a.applique_le || a.repondu_le || '').slice(0, 10) + ')';
+  }).join('\n') : 'Aucune réponse aux arbitrages dans SUIVI pour l’instant.';
+  var fini = function () { confirmerEnregistrement('COPIÉ : À COLLER DANS LA CONVERSATION'); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(texte).then(fini, function () { window.prompt('Copiez ce texte :', texte); });
+  else window.prompt('Copiez ce texte :', texte);
+}
+/* ----- Écran de fusion ou de renommage ----- */
+function ouvrirFusion(a) {
+  var dlg = $('dlg-fusion'), lignes = $('dlg-fusion-lignes'), champ = $('dlg-fusion-intitule'), err = $('dlg-fusion-erreur');
+  var renommage = a.nature === 'a_appliquer' && a.operation === 'renommage';
+  $('dlg-fusion-titre').textContent = renommage ? 'Renommer le dossier' : 'Fusionner les dossiers';
+  $('dlg-fusion-valider').textContent = renommage ? 'Renommer' : 'Fusionner';
+  $('dlg-fusion-aide').textContent = renommage
+    ? 'Vérifiez le dossier à renommer et le nouvel intitulé.'
+    : 'Cochez le dossier à garder. Tout le contenu des autres (chronologie, rappels, échéances, mails, adresses) y est versé, puis ils sont supprimés. Un dossier déjà dans SUIVI l’emporte sur une fiche proposée.';
+  lignes.textContent = ''; err.textContent = '';
+  var tous = etat.dossiers.slice().sort(function (x, y) { return x.intitule.localeCompare(y.intitule, 'fr'); });
+  var fiches = (etat.listeProps || []).slice().sort(function (x, y) { return x.intitule.localeCompare(y.intitule, 'fr'); });
+  var rangees = [], touche = false;
+  function intituleDe(sel) {
+    var v = sel.value; if (!v) return '';
+    if (v[0] === 'd') { var d = tous.filter(function (x) { return 'd' + x.id === v; })[0]; return d ? d.intitule : ''; }
+    var f = fiches.filter(function (x) { return 'p' + x.cle === v; })[0]; return f ? f.intitule : '';
+  }
+  function proposerIntitule() {
+    if (touche || a.intitule_final) return;
+    var r = rangees.filter(function (x) { return x.radio.checked; })[0] || rangees[0];
+    champ.value = intituleDe(r.select) || r.nom;
+  }
+  (a.situation || []).forEach(function (x, i) {
+    var sel = el('select', { 'aria-label': 'Dossier correspondant à « ' + x.intitule + ' »' });
+    sel.appendChild(el('option', { value: '', texte: '— ne pas inclure —' }));
+    var g1 = el('optgroup', { label: 'Dossiers' }), g2 = el('optgroup', { label: 'Fiches proposées' });
+    tous.forEach(function (d) { g1.appendChild(el('option', { value: 'd' + d.id, texte: d.intitule + (actif(d) ? '' : ' (classé)') })); });
+    fiches.forEach(function (f) { g2.appendChild(el('option', { value: 'p' + f.cle, texte: f.intitule })); });
+    sel.appendChild(g1); if (fiches.length) sel.appendChild(g2);
+    if (x.sorte === 'dossier') sel.value = 'd' + x.id; else if (x.sorte === 'proposition') sel.value = 'p' + x.cle;
+    var radio = el('input', { type: 'radio', name: 'garder', value: String(i), 'aria-label': 'Garder ce dossier' });
+    if (renommage) radio.className = 'cache';
+    var r = { radio: radio, select: sel, nom: x.intitule };
+    rangees.push(r);
+    radio.addEventListener('change', proposerIntitule);
+    sel.addEventListener('change', proposerIntitule);
+    lignes.appendChild(el('div', { classe: 'ligne-f' }, [radio, el('span', { classe: 'nom', texte: x.intitule }), sel]));
+  });
+  /* dossier à garder par défaut : le premier déjà dans SUIVI */
+  var parDefaut = rangees.filter(function (r) { return r.select.value[0] === 'd'; })[0] || rangees.filter(function (r) { return r.select.value; })[0] || rangees[0];
+  if (parDefaut) parDefaut.radio.checked = true;
+  champ.value = a.intitule_final || '';
+  champ.oninput = function () { touche = true; };
+  proposerIntitule();
+  dlg.onclose = null;
+  $('dlg-fusion-valider').onclick = function (ev) {
+    ev.preventDefault(); err.textContent = '';
+    var elements = [], garder = -1;
+    rangees.forEach(function (r) {
+      if (!r.select.value) return;
+      if (r.radio.checked) garder = elements.length;
+      elements.push(r.select.value[0] === 'd' ? { sorte: 'dossier', id: +r.select.value.slice(1) } : { sorte: 'proposition', cle: r.select.value.slice(1) });
+    });
+    if (renommage) { if (elements.length !== 1) { err.textContent = 'Choisissez le dossier à renommer.'; return; } garder = 0; }
+    else {
+      if (elements.length < 2) { err.textContent = 'Une fusion demande au moins deux dossiers.'; return; }
+      if (garder < 0) { err.textContent = 'Le dossier coché « à garder » n’est pas choisi dans sa liste.'; return; }
+    }
+    if (!champ.value.trim()) { err.textContent = 'Indiquez l’intitulé à garder.'; champ.focus(); return; }
+    var b = $('dlg-fusion-valider'); b.disabled = true;
+    api('POST', { action: 'arbitrage_appliquer', id: a.id, elements: elements, garder: garder, intitule: champ.value }).then(function () {
+      dlg.close();
+      confirmerEnregistrement(renommage ? 'DOSSIER RENOMMÉ' : 'DOSSIERS FUSIONNÉS');
+      return rouvrirATrancher();
+    }).catch(function (e) { err.textContent = e.message; }).then(function () { b.disabled = false; });
+  };
+  dlg.showModal();
 }
 function panneauSiLibre() { if (!etat.choisi) panneauATraiter(); }
 function heureCourte(iso) { return iso ? new Date(iso).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
@@ -2010,7 +2316,7 @@ function encadreAccord() {
 function attendreLibre(max) {
   var fin = Date.now() + max;
   return new Promise(function (res) {
-    (function tour() { if ((!pontEnCours && !propsEnCours) || Date.now() > fin) return res(); setTimeout(tour, 300); })();
+    (function tour() { if ((!pontEnCours && !propsEnCours && !arbsEnCours) || Date.now() > fin) return res(); setTimeout(tour, 300); })();
   });
 }
 function miseAJourForcee() {
@@ -2035,10 +2341,12 @@ function miseAJourForcee() {
     var connusR = {}, connusP = {};
     (rr[1].ids || []).forEach(function (id) { connusR[id] = 1; });
     (rr[2].ids || []).forEach(function (id) { connusP[id] = 1; });
-    var rel = tous.filter(function (f) { return f.name.indexOf('essai') !== 0 && f.name.indexOf('propositions') !== 0; });
+    var rel = tous.filter(function (f) { return estReleve(f.name); });
     var props = tous.filter(function (f) { return f.name.indexOf('propositions-') === 0; });
+    var arbs = tous.filter(function (f) { return f.name.indexOf('arbitrages-') === 0; });
     bilan.releves = { total: rel.length, nouveaux: rel.filter(function (f) { return !connusR[f.id]; }).length, dernier: rel.length ? rel[0].createdTime : null };
     bilan.props = { total: props.length, nouveaux: props.filter(function (f) { return !connusP[f.id]; }).length, dernier: props.length ? props[0].name : '' };
+    bilan.arbs = { total: arbs.length, dernier: arbs.length ? arbs[0].name : '' };
     return lireReleves();   /* enchaîne d'elle-même la lecture des dossiers proposés */
   }).then(function () {
     if (pontAccord) { var e = new Error('accord Google à donner'); e.accord = true; throw e; }
@@ -2084,6 +2392,10 @@ function afficherBilan(bilan) {
   var p = bilan.props, enAttente = etat.propositions || 0;
   ul.appendChild(el('li', null, [el('b', { classe: enAttente ? 'alerte' : 'ok', texte: 'Dossiers proposés : ' + (enAttente ? pluriel(enAttente, 'fiche attend', 'fiches attendent') + ' votre décision' : 'aucune fiche en attente') }),
     el('span', { texte: pluriel(p.total, 'lot') + ' dans le Drive' + (p.dernier ? ' (le dernier : ' + p.dernier + ')' : '') + ', dont ' + pluriel(p.nouveaux, 'nouveau repris', 'nouveaux repris') + ' maintenant.' })]));
+  /* 2 bis. arbitrages */
+  var nArb = etat.arbitrages || 0;
+  if (bilan.arbs && (bilan.arbs.total || nArb)) ul.appendChild(el('li', null, [el('b', { classe: nArb ? 'alerte' : 'ok', texte: 'Arbitrages : ' + (nArb ? pluriel(nArb, 'point attend', 'points attendent') + ' votre décision' : 'rien en attente') }),
+    el('span', { texte: pluriel(bilan.arbs.total, 'lot') + ' dans le Drive' + (bilan.arbs.dernier ? ' (le dernier : ' + bilan.arbs.dernier + ').' : '.') })]));
   /* 3. état des dossiers */
   var ouverts = etat.dossiers.filter(function (d) { return actif(d) && d.etape !== 'abandonne' && d.etape !== 'clos'; }).length;
   var nAR = etat.releves ? (etat.releves.a_rattacher || 0) : 0;
@@ -2091,9 +2403,9 @@ function afficherBilan(bilan) {
     el('span', { texte: nAR ? pluriel(nAR, 'mail attend', 'mails attendent') + ' d’être rattaché' + (nAR > 1 ? 's' : '') + '.' : 'Aucun mail à rattacher.' })]));
   corps.appendChild(ul);
   corps.appendChild(el('p', { classe: 'sous', style: 'margin-top:10px', texte: 'Lecture faite à ' + heure + '. Les fichiers déjà repris ne sont jamais relus.' }));
-  if (enAttente) {
+  if (enAttente || nArb) {
     boutons.appendChild(el('button', { classe: 'bouton', value: 'fermer', texte: 'Fermer' }));
-    boutons.appendChild(el('button', { classe: 'bouton fort', type: 'button', texte: 'Voir les fiches proposées', onclick: function () { dlg.close(); ouvrirPropositions(); } }));
+    boutons.appendChild(el('button', { classe: 'bouton fort', type: 'button', texte: 'Voir ce qui est à trancher', onclick: function () { dlg.close(); ouvrirATrancher(enAttente ? 'fiches' : 'arbitrages'); } }));
   } else boutons.appendChild(fermer);
   dlg.showModal();
 }
