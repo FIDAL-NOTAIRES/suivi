@@ -22,6 +22,15 @@
   --bord:#27425B; --ardoise:#122A42; --signet:#33838B;
 }
 *{box-sizing:border-box}
+#confirmation{position:fixed;left:50%;top:50%;z-index:1000;transform:translate(-50%,-50%) scale(.96);display:none;opacity:0;
+  padding:16px 28px;background:rgba(8,22,37,.96);border:1px solid var(--cyan);color:var(--texte);
+  font:600 14px/1.3 ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.08em;text-transform:uppercase;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px));
+  box-shadow:0 0 0 1px rgba(109,213,220,.25),0 12px 40px rgba(0,0,0,.5);transition:opacity .25s,transform .25s;pointer-events:none}
+#confirmation.visible{display:block;opacity:1;transform:translate(-50%,-50%) scale(1)}
+#confirmation.sortie{opacity:0}
+#confirmation .coche{color:var(--cyan);font-size:18px;margin-right:4px}
+@media (prefers-reduced-motion:reduce){#confirmation{transition:none}}
 html,body{height:100%}
 body{margin:0;background:var(--fond);color:var(--texte);
   font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;
@@ -1218,6 +1227,16 @@ function dessinerRepli(lots) {
 }
 
 /* ---------- Volet du dossier ---------- */
+/* fenêtre de confirmation passagère (environ 2 s), annoncée aussi aux lecteurs d'écran */
+var minuterieConfirmation = null;
+function confirmerEnregistrement(texte) {
+  var b = document.getElementById('confirmation');
+  if (!b) { b = document.createElement('div'); b.id = 'confirmation'; b.setAttribute('role', 'status'); b.setAttribute('aria-live', 'polite'); document.body.appendChild(b); }
+  b.innerHTML = ''; b.appendChild(el('span', { classe: 'coche', texte: '✓' })); b.appendChild(document.createTextNode(' ' + texte));
+  b.classList.remove('sortie'); b.classList.add('visible');
+  clearTimeout(minuterieConfirmation);
+  minuterieConfirmation = setTimeout(function () { b.classList.add('sortie'); setTimeout(function () { b.classList.remove('visible', 'sortie'); }, 300); }, 1800);
+}
 function fermerVolet() { $('volet').classList.add('cache'); $('voile').classList.add('cache'); etat.ouvert = null; }
 $('voile').addEventListener('click', fermerVolet);
 function enteteVolet(titre) {
@@ -1461,7 +1480,15 @@ function formulaire(d, prop) {
     if (prop && !prop.mail_outlook) donnees.mail = prop.mail;
     if (prop && prop.mail_outlook) donnees.mail_outlook = prop.mail_outlook;   /* mail relevé : rattaché, pas de seconde ligne */
     if (prop && prop.proposition) { donnees.proposition = prop.proposition; delete donnees.mail; }   /* fiche du balayage : marquée validée */
-    api('POST', donnees).then(function (j) { return charger().then(function () { return ouvrir(j.dossier.id); }); }).catch(function (x) { err.textContent = x.message; });
+    /* 26/10/2026 (JFD) : une fiche modifiée et enregistrée se FERME, une fenêtre confirme l'enregistrement pendant ~2 s ;
+       un dossier créé s'ouvre comme avant, avec la même confirmation */
+    var bouton = f.querySelector('button[type="submit"]'); if (bouton) bouton.disabled = true;
+    api('POST', donnees).then(function (j) {
+      return charger().then(function () {
+        if (nouveau) { confirmerEnregistrement('Dossier créé'); return ouvrir(j.dossier.id); }
+        fermerVolet(); confirmerEnregistrement('Modifications enregistrées');
+      });
+    }).catch(function (x) { if (bouton) bouton.disabled = false; err.textContent = x.message; });
   });
   return f;
 }
