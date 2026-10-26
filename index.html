@@ -693,6 +693,22 @@ function allerA(id) {
     m.classList.add('repere'); setTimeout(function () { m.classList.remove('repere'); }, 1900);
   }, mouvementReduit() ? 0 : DUREE_ANIM);
 }
+/* 26/10/2026 (JFD) : un clic sur la barre d'un dossier fait d'abord pivoter la roue et zoomer sur son type, comme le clic sur
+   une matière ou un type, le dossier venant à droite (3 h) et sa barre clignotant ; la fiche s'ouvre ensuite */
+function viserEtOuvrir(id) {
+  var d = etat.dossiers.filter(function (x) { return x.id === id; })[0];
+  if (!d || !actif(d)) return ouvrir(id);
+  if (!filtres([d]).length) etat.vue.filtre = [];
+  var t = T.type(d.type_dossier), z = etat.vue.zoom;
+  if (t && !(z && z.niveau === 'type' && z.id === t.id)) etat.vue.zoom = { niveau: 'type', id: t.id };
+  etat.vue.viser = { dossier: id };
+  dessiner('tourne');
+  setTimeout(function () {
+    var m = $('carte').querySelector('.module[data-id="' + id + '"]');
+    if (m) { m.classList.add('repere'); setTimeout(function () { m.classList.remove('repere'); }, 1900); }
+    ouvrir(id);
+  }, mouvementReduit() ? 0 : DUREE_ANIM);
+}
 /* point 16 : mode revue, flèche simple = type suivant, flèche double (Maj + flèche) = matière suivante */
 function revue(sens, niveau) {
   var z = etat.vue.zoom, g = etat.geo; if (!z || !g || !g.lots.length) return;
@@ -898,8 +914,8 @@ function dessiner(anim) {
       g.addEventListener('mouseleave', retourATraiter);
       g.addEventListener('focus', function () { garderApercu(); montrer(d); });
       g.addEventListener('blur', retourATraiter);
-      g.addEventListener('click', function () { ouvrir(d.id); });
-      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(d.id); } });
+      g.addEventListener('click', function (ev) { ev.stopPropagation(); viserEtOuvrir(d.id); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); viserEtOuvrir(d.id); } });
       roue.appendChild(g);
     });
     debut += span;
