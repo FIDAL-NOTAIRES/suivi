@@ -266,6 +266,16 @@ dialog label{display:block;margin-top:10px;font-size:13.5px;color:var(--gris)}
 dialog input,dialog select{display:block;width:100%;margin-top:3px;padding:8px 10px;background:rgba(255,255,255,.07);border:1px solid var(--bord);border-radius:2px;color:var(--texte)}
 dialog select option{background:var(--ardoise)}
 dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+/* mise à jour forcée (26/10/2026) */
+#dlg-maj{max-width:500px}
+.bilan{list-style:none;margin:4px 0 0;padding:0}
+.bilan li{padding:9px 0;border-top:1px solid rgba(255,255,255,.08);font-size:13.5px;line-height:1.5}
+.bilan li b{display:block;font-weight:600}
+.bilan li span{display:block;color:var(--gris)}
+.bilan .ok{color:#6DD5DC}
+.bilan .alerte{color:#FFB667}
+.bilan .rouge{color:#FF8FAE}
+.raccourcis button[aria-busy="true"]{opacity:.6;cursor:progress}
 
 /* dépôt de mail */
 .depot{border:1.5px dashed #2F6E86;border-radius:2px;padding:22px 16px;color:#9FC4D2;text-align:center;background:rgba(109,213,220,.04);margin-top:10px}
@@ -340,6 +350,7 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
       <div class="marque"><div class="trait"></div><div><b>FIDAL</b><span>NOTAIRES</span></div></div>
       <nav class="raccourcis" aria-label="Commandes">
         <button type="button" class="fort" id="nouveau"><span class="voyant" aria-hidden="true"></span>Nouveau dossier</button>
+        <button type="button" id="maj" title="Relire tout de suite le Drive : relevés des mails et dossiers proposés">Mettre à jour</button>
         <button type="button" id="verrouiller">Verrouiller</button>
       </nav>
     </div>
@@ -397,6 +408,14 @@ dialog .boutons{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
       <button class="bouton" value="annuler" formnovalidate>Annuler</button>
       <button class="bouton fort" value="valider" id="dlg-delai-valider">Enregistrer le report</button>
     </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-maj" aria-labelledby="dlg-maj-titre">
+  <form method="dialog">
+    <h3 id="dlg-maj-titre">Mise à jour</h3>
+    <div id="dlg-maj-corps"></div>
+    <div class="boutons" id="dlg-maj-boutons"></div>
   </form>
 </dialog>
 
@@ -469,6 +488,7 @@ $('form-acces').addEventListener('submit', function (e) {
   demarrer().catch(function (err) { $('erreur-acces').textContent = err.message; });
 });
 $('verrouiller').addEventListener('click', verrouiller);
+$('maj').addEventListener('click', function () { miseAJourForcee(); });
 function chargerCollaborateurs() {
   return api('GET', { action: 'collaborateurs' }).then(function (j) { etat.collaborateurs = j.collaborateurs || []; $('n-collab').textContent = etat.collaborateurs.length; })
     .catch(function () { etat.collaborateurs = []; });
@@ -1939,6 +1959,100 @@ function encadreAccord() {
     el('span', { texte: 'La lecture des relevés dans le Drive attend votre accord Google.' }),
     el('button', { classe: 'bouton fort', type: 'button', texte: 'Autoriser la lecture du Drive', onclick: autoriserDrive })
   ]);
+}
+/* ---------- Mise à jour forcée (26/10/2026) ----------
+   Un clic relit tout de suite le dossier Drive « SUIVI – relevés » (relevés des mails et dossiers proposés),
+   recharge les dossiers, puis affiche un bilan : ce qu'il y a dans le Drive, ce qui vient d'être repris,
+   ce qui attend une décision. Rien n'est repris deux fois : les fichiers déjà lus restent ignorés. */
+function attendreLibre(max) {
+  var fin = Date.now() + max;
+  return new Promise(function (res) {
+    (function tour() { if ((!pontEnCours && !propsEnCours) || Date.now() > fin) return res(); setTimeout(tour, 300); })();
+  });
+}
+function miseAJourForcee() {
+  var b = $('maj');
+  if (b.getAttribute('aria-busy') === 'true') return Promise.resolve();
+  b.setAttribute('aria-busy', 'true'); b.textContent = 'Mise à jour…';
+  var bilan = {};
+  var q = "name = '" + DOSSIER_RELEVES.replace(/'/g, "\\'") + "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+  return attendreLibre(60000).then(function () {
+    return chercherDrive(q, 'files(id)', null, 5);
+  }).then(function (r) {
+    pontAccord = false;
+    if (!r.files || !r.files.length) throw new Error('dossier Drive « ' + DOSSIER_RELEVES + ' » introuvable.');
+    var q2 = "'" + r.files[0].id + "' in parents and trashed = false and name contains '.json'";
+    return Promise.all([
+      chercherDrive(q2, 'files(id,name,createdTime)', 'createdTime desc', 1000),
+      api('GET', { action: 'releves_repris' }),
+      api('GET', { action: 'propositions_reprises' })
+    ]);
+  }).then(function (rr) {
+    var tous = rr[0].files || [];
+    var connusR = {}, connusP = {};
+    (rr[1].ids || []).forEach(function (id) { connusR[id] = 1; });
+    (rr[2].ids || []).forEach(function (id) { connusP[id] = 1; });
+    var rel = tous.filter(function (f) { return f.name.indexOf('essai') !== 0 && f.name.indexOf('propositions') !== 0; });
+    var props = tous.filter(function (f) { return f.name.indexOf('propositions-') === 0; });
+    bilan.releves = { total: rel.length, nouveaux: rel.filter(function (f) { return !connusR[f.id]; }).length, dernier: rel.length ? rel[0].createdTime : null };
+    bilan.props = { total: props.length, nouveaux: props.filter(function (f) { return !connusP[f.id]; }).length, dernier: props.length ? props[0].name : '' };
+    return lireReleves();   /* enchaîne d'elle-même la lecture des dossiers proposés */
+  }).then(function () {
+    if (pontAccord) { var e = new Error('accord Google à donner'); e.accord = true; throw e; }
+    return charger();
+  }).then(function () { bilan.ok = true; })
+    .catch(function (err) { bilan.erreur = err; if (err && err.accord) pontAccord = true; })
+    .then(function () {
+      b.removeAttribute('aria-busy'); b.textContent = 'Mettre à jour';
+      panneauSiLibre();
+      afficherBilan(bilan);
+    });
+}
+function pluriel(n, mot, motPluriel) { return n + ' ' + (n > 1 ? (motPluriel || mot + 's') : mot); }
+function afficherBilan(bilan) {
+  var dlg = $('dlg-maj'), corps = $('dlg-maj-corps'), boutons = $('dlg-maj-boutons');
+  corps.textContent = ''; boutons.textContent = '';
+  var heure = new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+  var fermer = el('button', { classe: 'bouton fort', value: 'fermer', texte: 'Fermer' });
+  if (bilan.erreur) {
+    if (bilan.erreur.accord) {
+      corps.appendChild(el('p', { classe: 'sous', texte: 'La lecture du Drive attend votre accord Google. Donnez-le, puis relancez « Mettre à jour ».' }));
+      boutons.appendChild(el('button', { classe: 'bouton', value: 'fermer', texte: 'Fermer' }));
+      boutons.appendChild(el('button', { classe: 'bouton fort', type: 'button', texte: 'Autoriser la lecture du Drive', onclick: function () { dlg.close(); autoriserDrive(); } }));
+    } else {
+      corps.appendChild(el('p', { classe: 'sous' }, [el('span', { style: 'color:#FF8FAE', texte: 'La mise à jour n’a pas abouti : ' + bilan.erreur.message }),
+        el('br'), 'Les dossiers affichés sont ceux de la dernière lecture réussie. Réessayez dans un instant ; si l’erreur persiste, vérifiez que MORNING répond.']));
+      boutons.appendChild(fermer);
+    }
+    dlg.showModal(); return;
+  }
+  var ul = el('ul', { classe: 'bilan' });
+  /* 1. relevés des mails */
+  var r = bilan.releves, ligneR;
+  if (!r.total) ligneR = el('li', null, [el('b', { classe: 'rouge', texte: 'Relevés des mails : aucune fiche dans le Drive' }),
+    el('span', { texte: 'La tâche de relevé des mails n’a encore rien déposé. Tant qu’elle ne fonctionne pas, les chronologies et les relances des dossiers ouverts ne bougent pas.' })]);
+  else {
+    var age = r.dernier ? (Date.now() - Date.parse(r.dernier)) / 3600000 : 99;
+    ligneR = el('li', null, [el('b', { classe: age > 2 ? 'alerte' : 'ok', texte: 'Relevés des mails : ' + pluriel(r.nouveaux, 'nouvelle fiche reprise', 'nouvelles fiches reprises') }),
+      el('span', { texte: pluriel(r.total, 'fiche') + ' dans le Drive ; la dernière a été déposée le ' + heureCourte(r.dernier) + (age > 2 ? ', il y a plus de deux heures.' : '.') })]);
+  }
+  ul.appendChild(ligneR);
+  /* 2. dossiers proposés par le balayage */
+  var p = bilan.props, enAttente = etat.propositions || 0;
+  ul.appendChild(el('li', null, [el('b', { classe: enAttente ? 'alerte' : 'ok', texte: 'Dossiers proposés : ' + (enAttente ? pluriel(enAttente, 'fiche attend', 'fiches attendent') + ' votre décision' : 'aucune fiche en attente') }),
+    el('span', { texte: pluriel(p.total, 'lot') + ' dans le Drive' + (p.dernier ? ' (le dernier : ' + p.dernier + ')' : '') + ', dont ' + pluriel(p.nouveaux, 'nouveau repris', 'nouveaux repris') + ' maintenant.' })]));
+  /* 3. état des dossiers */
+  var ouverts = etat.dossiers.filter(function (d) { return actif(d) && d.etape !== 'abandonne' && d.etape !== 'clos'; }).length;
+  var nAR = etat.releves ? (etat.releves.a_rattacher || 0) : 0;
+  ul.appendChild(el('li', null, [el('b', { texte: pluriel(ouverts, 'dossier ouvert', 'dossiers ouverts') + ' sur l’anneau' }),
+    el('span', { texte: nAR ? pluriel(nAR, 'mail attend', 'mails attendent') + ' d’être rattaché' + (nAR > 1 ? 's' : '') + '.' : 'Aucun mail à rattacher.' })]));
+  corps.appendChild(ul);
+  corps.appendChild(el('p', { classe: 'sous', style: 'margin-top:10px', texte: 'Lecture faite à ' + heure + '. Les fichiers déjà repris ne sont jamais relus.' }));
+  if (enAttente) {
+    boutons.appendChild(el('button', { classe: 'bouton', value: 'fermer', texte: 'Fermer' }));
+    boutons.appendChild(el('button', { classe: 'bouton fort', type: 'button', texte: 'Voir les fiches proposées', onclick: function () { dlg.close(); ouvrirPropositions(); } }));
+  } else boutons.appendChild(fermer);
+  dlg.showModal();
 }
 function blocReleves() {
   if (pontAccord) return encadreAccord();
